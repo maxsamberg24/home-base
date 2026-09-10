@@ -1,0 +1,135 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id             String   @id @default(cuid())
+  name           String
+  favoriteTeamId String?
+  createdAt      DateTime @default(now())
+
+  memberships       GroupMember[]
+  seasonPredictions SeasonPrediction[]
+  awardPredictions  AwardPrediction[]
+  linePicks         LinePick[]
+  straightPicks     StraightPick[]
+  survivorPicks     SurvivorPick[]
+}
+
+model Group {
+  id          String   @id @default(cuid())
+  name        String
+  inviteCode  String   @unique
+  createdById String
+  createdAt   DateTime @default(now())
+
+  members       GroupMember[]
+  linePicks     LinePick[]
+  straightPicks StraightPick[]
+  survivorPicks SurvivorPick[]
+}
+
+model GroupMember {
+  id       String   @id @default(cuid())
+  groupId  String
+  userId   String
+  joinedAt DateTime @default(now())
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+}
+
+// One row per user per season. winTotals is a JSON map of ESPN team id -> predicted win count.
+model SeasonPrediction {
+  id        String   @id @default(cuid())
+  userId    String
+  season    Int
+  winTotals String // JSON: { "19": 11, "17": 9, ... }
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, season])
+}
+
+// category: SB_WINNER | MVP | OROY | DROY | COACH_OY
+model AwardPrediction {
+  id       String @id @default(cuid())
+  userId   String
+  season   Int
+  category String
+  value    String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, season, category])
+}
+
+// Weekly "guess the closing spread" game, scoped to a group.
+model LinePick {
+  id            String   @id @default(cuid())
+  groupId       String
+  userId        String
+  season        Int
+  week          Int
+  seasonType    Int      @default(2)
+  eventId       String
+  guessedSpread Float // home-team-perspective spread, e.g. -3.5 means home favored by 3.5
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId, eventId])
+}
+
+// Weekly straight-up (no spread) winner pick'em, scoped to a group.
+model StraightPick {
+  id            String   @id @default(cuid())
+  groupId       String
+  userId        String
+  season        Int
+  week          Int
+  seasonType    Int      @default(2)
+  eventId       String
+  pickedTeamId  String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId, eventId])
+}
+
+// Survivor pool: one winner pick per week, each team usable once per season, scoped to a group.
+model SurvivorPick {
+  id           String   @id @default(cuid())
+  groupId      String
+  userId       String
+  season       Int
+  week         Int
+  seasonType   Int      @default(2)
+  eventId      String
+  pickedTeamId String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId, season, week])
+}

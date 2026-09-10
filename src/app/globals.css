@@ -1,26 +1,52 @@
 @import "tailwindcss";
 
+/* Fixed light brand identity — no dark mode. White, black, yellow. On purpose. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --paper: #ffffff;
+  --ink: #111111;
+  --muted: #6b6b6b;
+  --hairline: #e7e5e0;
+  --yellow: #ffde21;
+  --yellow-soft: #fff6bf;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-hairline: var(--hairline);
+  --color-yellow: var(--yellow);
+  --color-yellow-soft: var(--yellow-soft);
+  --font-display: var(--font-archivo-black);
+  --font-sans: var(--font-inter);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-inter), Arial, Helvetica, sans-serif;
+}
+
+.font-display {
+  font-family: var(--font-archivo-black), Arial, Helvetica, sans-serif;
+  letter-spacing: -0.01em;
+}
+
+/* A highlighter-style yellow bar behind headline text for "pop" */
+.mark-yellow {
+  background: linear-gradient(transparent 62%, var(--yellow) 62%);
+  padding: 0 0.05em;
+}
+
+.division-toggle summary {
+  list-style: none;
+}
+.division-toggle summary::-webkit-details-marker {
+  display: none;
+}
+.division-toggle summary .chevron {
+  transition: transform 150ms ease;
+}
+.division-toggle[open] summary .chevron {
+  transform: rotate(180deg);
 }
