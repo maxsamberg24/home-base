@@ -1,4 +1,5 @@
 import { divisionForAbbreviation } from "@/lib/divisions";
+import { getLeague } from "@/lib/leagues";
 
 export interface TeamCardData {
   id: string;
@@ -11,19 +12,22 @@ export interface TeamCardData {
 
 export default function TeamCard({
   team,
+  league,
   size = "md",
 }: {
   team: TeamCardData;
+  league: string;
   size?: "sm" | "md";
 }) {
-  const div = divisionForAbbreviation(team.abbreviation);
+  const leagueDef = getLeague(league);
+  const div = leagueDef.hasDivisions ? divisionForAbbreviation(team.abbreviation) : undefined;
   const bg = team.color ? `#${team.color}` : "#111111";
   const panelHeight = size === "sm" ? "h-24" : "h-32";
 
   return (
     <div className="group flex flex-col overflow-hidden rounded-2xl border-[3px] border-ink bg-paper transition-transform duration-150 hover:-translate-y-1 hover:shadow-[4px_4px_0_0_#111111]">
       <div className="flex items-center justify-between bg-ink px-2.5 py-1 text-[9px] font-bold uppercase tracking-widest text-paper">
-        <span>NFL</span>
+        <span>{leagueDef.shortName}</span>
         <span>{div ? `${div.conference} ${div.division}` : ""}</span>
       </div>
 

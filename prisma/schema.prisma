@@ -13,17 +13,92 @@ datasource db {
 }
 
 model User {
-  id             String   @id @default(cuid())
-  name           String
-  favoriteTeamId String?
-  createdAt      DateTime @default(now())
+  id          String   @id @default(cuid())
+  name        String
+  friendCode  String   @unique
+  venmoHandle String?
+  createdAt   DateTime @default(now())
 
+  favoriteTeams     FavoriteTeam[]
+  notes             TeamNote[]
   memberships       GroupMember[]
   seasonPredictions SeasonPrediction[]
   awardPredictions  AwardPrediction[]
   linePicks         LinePick[]
   straightPicks     StraightPick[]
   survivorPicks     SurvivorPick[]
+  friendshipsA      Friendship[]       @relation("FriendA")
+  friendshipsB      Friendship[]       @relation("FriendB")
+  wagersCreated     Wager[]            @relation("WagerCreator")
+  wagersReceived    Wager[]            @relation("WagerOpponent")
+}
+
+// A team a user follows. league is our own slug (see src/lib/leagues.ts),
+// teamId is ESPN's team id within that league.
+model FavoriteTeam {
+  id      String   @id @default(cuid())
+  userId  String
+  league  String
+  teamId  String
+  addedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, league, teamId])
+}
+
+// Free-text notes a user keeps on a team (ticket info, rivalries, who to watch).
+model TeamNote {
+  id        String   @id @default(cuid())
+  userId    String
+  league    String
+  teamId    String
+  content   String
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, league, teamId])
+}
+
+// Mutual friend connection, made by sharing a friendCode. Stored once per
+// pair with userAId < userBId (enforced in application code) so the unique
+// constraint catches duplicates regardless of who initiated.
+model Friendship {
+  id        String   @id @default(cuid())
+  userAId   String
+  userBId   String
+  createdAt DateTime @default(now())
+
+  userA User @relation("FriendA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB User @relation("FriendB", fields: [userBId], references: [id], onDelete: Cascade)
+
+  @@unique([userAId, userBId])
+}
+
+// Peer-to-peer wager: post a pick, a friend accepts / counters / declines.
+// Settlement (who won) is recorded manually by either side once accepted —
+// there's no automatic grading against ESPN results for these free-form bets.
+model Wager {
+  id          String   @id @default(cuid())
+  creatorId   String
+  opponentId  String?
+  league      String?
+  eventId     String?
+  description String
+  type        String   @default("CUSTOM") // SPREAD | MONEYLINE | PROP | CUSTOM
+  line        String?
+  stake       Float
+  status      String   @default("OPEN") // OPEN | COUNTERED | ACCEPTED | DECLINED | SETTLED
+  result      String? // CREATOR_WON | OPPONENT_WON | PUSH
+  counterOfId String?  @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  creator     User   @relation("WagerCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  opponent    User?  @relation("WagerOpponent", fields: [opponentId], references: [id], onDelete: SetNull)
+  counterOf   Wager? @relation("WagerCounter", fields: [counterOfId], references: [id], onDelete: SetNull)
+  counteredBy Wager? @relation("WagerCounter")
 }
 
 model Group {

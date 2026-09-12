@@ -2,10 +2,10 @@ import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import type { User } from "@/generated/prisma/client";
 
-export const SESSION_COOKIE = "nfl_hub_uid";
+export const SESSION_COOKIE = "home_base_uid";
 
 // Lightweight identity: no passwords. A random id in an httpOnly cookie maps
-// to a User row that's really just a display name + favorite team.
+// to a User row that's really just a display name, favorite teams, and friends.
 export async function getCurrentUser(): Promise<User | null> {
   const store = await cookies();
   const uid = store.get(SESSION_COOKIE)?.value;

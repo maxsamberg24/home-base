@@ -1,63 +1,39 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/identity";
-import { getTeam, getTeams, getCurrentWeek } from "@/lib/espn";
-import { prisma } from "@/lib/prisma";
-import { CURRENT_SEASON } from "@/lib/constants";
-import { setFavoriteTeam } from "@/app/actions";
+import { getTeams } from "@/lib/espn";
+import { getLeague } from "@/lib/leagues";
+import { getFollowedTeams } from "@/lib/followedTeams";
+import { followTeam, unfollowTeam } from "@/app/actions";
+import { relativeDayLabel, formatGameDate, formatGameTime } from "@/lib/dates";
 import TeamCard from "@/components/TeamCard";
 import SportTabs from "@/components/SportTabs";
 import DivisionAccordion from "@/components/DivisionAccordion";
-import { divisionForAbbreviation } from "@/lib/divisions";
 
-const features = [
-  {
-    href: "/team",
-    icon: "🏟️",
-    title: "My Team",
-    body: "News, scores, stats, and the depth chart for your favorite team.",
-  },
-  {
-    href: "/predictions",
-    icon: "🔮",
-    title: "Predictions",
-    body: "Call every team's win total, plus your Super Bowl and MVP futures.",
-  },
-  {
-    href: "/games",
-    icon: "🎯",
-    title: "Games",
-    body: "Weekly pick'em, spread guessing, and survivor pools with friends.",
-  },
-];
-
-export default async function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ league?: string }>;
+}) {
   const user = await getCurrentUser();
   if (!user) return null;
 
-  const [favoriteTeam, teams, currentWeek, groupCount, prediction] = await Promise.all([
-    user.favoriteTeamId ? getTeam(user.favoriteTeamId).catch(() => null) : null,
-    getTeams(),
-    getCurrentWeek().catch(() => null),
-    prisma.groupMember.count({ where: { userId: user.id } }),
-    prisma.seasonPrediction.findUnique({
-      where: { userId_season: { userId: user.id, season: CURRENT_SEASON } },
-    }),
+  const { league: activeLeague = "nfl" } = await searchParams;
+  const leagueDef = getLeague(activeLeague);
+
+  const [followed, browseTeams] = await Promise.all([
+    getFollowedTeams(user.id),
+    getTeams(leagueDef.sportPath).catch(() => []),
   ]);
 
-  const favoriteDiv = user.favoriteTeamId
-    ? divisionForAbbreviation(teams.find((t) => t.id === user.favoriteTeamId)?.abbreviation ?? "")
-    : undefined;
+  const followedKeySet = new Set(followed.map((f) => `${f.league}:${f.teamId}`));
 
-  const stats = [
-    { label: "Week", value: currentWeek ? currentWeek.week : "—" },
-    { label: "My team", value: favoriteTeam?.abbreviation ?? "—" },
-    { label: "Groups", value: groupCount },
-    { label: "Predictions", value: prediction ? "Set" : "—" },
-  ];
+  const nextUp = followed
+    .map((f) => ({ ...f, next: f.team.nextEvent?.[0] }))
+    .filter((f) => f.next)
+    .sort((a, b) => +new Date(a.next!.date) - +new Date(b.next!.date));
 
   return (
     <div className="space-y-14">
-      {/* Hero */}
       <section>
         <h1 className="font-display text-4xl uppercase leading-[0.95] sm:text-6xl">
           Welcome back,
@@ -65,123 +41,109 @@ export default async function Home() {
           <span className="mark-yellow">{user.name}.</span>
         </h1>
         <p className="mt-4 max-w-lg text-lg text-muted">
-          Here&apos;s everything for your {CURRENT_SEASON} NFL season.
+          {followed.length === 0
+            ? "Add your teams below to build your hub."
+            : `Following ${followed.length} team${followed.length === 1 ? "" : "s"} across ${new Set(followed.map((f) => f.league)).size} league${new Set(followed.map((f) => f.league)).size === 1 ? "" : "s"}.`}
         </p>
-
-        <div className="mt-8 grid grid-cols-2 gap-y-6 border-y-[3px] border-ink py-5 sm:grid-cols-4">
-          {stats.map((s, i) => (
-            <div
-              key={s.label}
-              className={`px-4 border-ink ${i % 2 === 1 ? "border-l-[3px]" : "border-l-0"} sm:border-l-[3px] ${
-                i === 0 ? "sm:border-l-0" : ""
-              }`}
-            >
-              <div className="text-[11px] font-bold uppercase tracking-widest text-muted">
-                {s.label}
-              </div>
-              <div className="font-display text-2xl uppercase">{s.value}</div>
-            </div>
-          ))}
-        </div>
       </section>
 
-      {/* Favorite team banner */}
-      {favoriteTeam ? (
-        <Link
-          href="/team"
-          className="flex flex-col items-center gap-6 overflow-hidden rounded-2xl border-[3px] border-ink sm:flex-row"
-        >
-          <div
-            className="flex w-full items-center justify-center p-8 sm:w-56"
-            style={{ backgroundColor: favoriteTeam.color ? `#${favoriteTeam.color}` : "#111111" }}
-          >
-            {favoriteTeam.logos?.[0]?.href && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={favoriteTeam.logos[0].href} alt="" className="h-24 w-24 object-contain" />
-            )}
+      {nextUp.length > 0 && (
+        <section>
+          <h2 className="font-display text-2xl uppercase mb-1">Next up</h2>
+          <p className="text-muted mb-4">One card per team, soonest first.</p>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {nextUp.map(({ league, teamId, team, next }) => {
+              const comp = next!.competitions[0];
+              const self = comp.competitors.find((c) => c.team.id === teamId);
+              const opp = comp.competitors.find((c) => c.team.id !== teamId);
+              const dayLabel = relativeDayLabel(next!.date);
+              const record = team.record?.items?.find((i) => i.type === "total") ?? team.record?.items?.[0];
+
+              return (
+                <Link
+                  key={`${league}:${teamId}`}
+                  href={`/teams/${league}/${teamId}`}
+                  className="rounded-2xl border-[3px] border-ink p-4 transition-transform hover:-translate-y-1 hover:shadow-[4px_4px_0_0_#111111]"
+                >
+                  <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-muted">
+                    <span>{getLeague(league).shortName}</span>
+                    {record?.summary && <span>{record.summary}</span>}
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    {team.logos?.[0]?.href && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={team.logos[0].href} alt="" className="h-8 w-8 object-contain" />
+                    )}
+                    <span className="font-display uppercase">{team.displayName}</span>
+                  </div>
+                  <div className="mt-3 text-sm">
+                    {self?.homeAway === "home" ? "vs" : "@"} {opp?.team.shortDisplayName ?? opp?.team.name}
+                  </div>
+                  <div className="mt-1 text-sm font-bold text-ink">
+                    {dayLabel ?? formatGameDate(next!.date)} · {formatGameTime(next!.date)}
+                  </div>
+                </Link>
+              );
+            })}
           </div>
-          <div className="flex-1 px-6 py-6 sm:py-0">
-            <div className="text-[11px] font-bold uppercase tracking-widest text-muted">
-              Your team{favoriteDiv ? ` · ${favoriteDiv.conference} ${favoriteDiv.division}` : ""}
-            </div>
-            <div className="font-display text-2xl uppercase sm:text-3xl">
-              {favoriteTeam.displayName}
-            </div>
-            {favoriteTeam.record?.items?.[0]?.summary && (
-              <div className="mt-1 text-muted">{favoriteTeam.record.items[0].summary}</div>
-            )}
-          </div>
-          <div className="hidden pr-6 font-display text-sm uppercase sm:block">View team →</div>
-        </Link>
-      ) : (
-        <Link
-          href="/team"
-          className="block rounded-2xl border-[3px] border-dashed border-ink p-6 text-center font-display uppercase hover:bg-yellow-soft transition-colors"
-        >
-          Pick your favorite team →
-        </Link>
+        </section>
       )}
 
-      {/* Feature blocks */}
-      <section className="grid gap-4 sm:grid-cols-3">
-        {features.map((f) => (
-          <Link
-            key={f.href}
-            href={f.href}
-            className="rounded-2xl border-[3px] border-ink bg-paper p-5 transition-transform hover:-translate-y-1 hover:shadow-[4px_4px_0_0_#111111]"
-          >
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl border-[3px] border-ink bg-yellow text-xl">
-              {f.icon}
-            </span>
-            <div className="mt-3 font-display uppercase">{f.title}</div>
-            <div className="mt-1 text-sm text-muted">{f.body}</div>
-          </Link>
-        ))}
-      </section>
+      {followed.length > 0 && (
+        <section>
+          <h2 className="font-display text-2xl uppercase mb-4">Your teams</h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
+            {followed.map((f) => (
+              <div key={`${f.league}:${f.teamId}`} className="relative">
+                <Link href={`/teams/${f.league}/${f.teamId}`}>
+                  <TeamCard team={f.team} league={f.league} size="sm" />
+                </Link>
+                <form action={unfollowTeam} className="absolute -right-1.5 -bottom-1.5">
+                  <input type="hidden" name="league" value={f.league} />
+                  <input type="hidden" name="teamId" value={f.teamId} />
+                  <button
+                    type="submit"
+                    title="Unfollow"
+                    className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-ink bg-paper text-xs font-black hover:bg-yellow"
+                  >
+                    ×
+                  </button>
+                </form>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
-      {/* Browse the league */}
       <section>
-        <h2 className="font-display text-2xl uppercase">Browse the league</h2>
-        <p className="mt-1 text-muted">Pick a sport, then a division, to see the teams.</p>
+        <h2 className="font-display text-2xl uppercase">Add teams</h2>
+        <p className="mt-1 text-muted">Pick a sport, then a division, to add a team.</p>
         <div className="mt-4">
-          <SportTabs />
+          <SportTabs basePath="/" active={activeLeague} />
         </div>
         <div className="mt-4">
           <DivisionAccordion
-            teams={teams}
-            openDivision={favoriteDiv ? `${favoriteDiv.conference} ${favoriteDiv.division}` : undefined}
-            renderTeam={(team) => (
-              <form action={setFavoriteTeam}>
-                <input type="hidden" name="teamId" value={team.id} />
-                <button type="submit" className="w-full text-left">
-                  <TeamCard team={team} size="sm" />
-                </button>
-              </form>
-            )}
+            teams={browseTeams}
+            league={activeLeague}
+            renderTeam={(team) => {
+              const key = `${activeLeague}:${team.id}`;
+              const isFollowed = followedKeySet.has(key);
+              return (
+                <form action={isFollowed ? unfollowTeam : followTeam}>
+                  <input type="hidden" name="league" value={activeLeague} />
+                  <input type="hidden" name="teamId" value={team.id} />
+                  <button type="submit" className="relative block w-full text-left">
+                    <TeamCard team={team} league={activeLeague} size="sm" />
+                    {isFollowed && (
+                      <span className="absolute left-1.5 top-7 rounded-full border-2 border-ink bg-yellow px-2 py-0.5 text-[9px] font-black uppercase">
+                        Following
+                      </span>
+                    )}
+                  </button>
+                </form>
+              );
+            }}
           />
-        </div>
-      </section>
-
-      {/* Connected accounts placeholder */}
-      <section className="rounded-2xl border-[3px] border-ink p-5">
-        <h2 className="font-display text-xl uppercase">Connect your accounts</h2>
-        <p className="mt-1 text-muted">
-          Link a sportsbook or fantasy league so bets and rosters sync automatically. Coming soon.
-        </p>
-        <div className="mt-4 flex flex-wrap gap-3">
-          {["DraftKings", "Fantasy Football"].map((name) => (
-            <button
-              key={name}
-              disabled
-              title="Coming soon"
-              className="flex cursor-not-allowed items-center gap-2 rounded-full border-[3px] border-hairline px-4 py-2 text-sm font-medium text-muted"
-            >
-              Connect {name}
-              <span className="rounded-full bg-hairline px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide">
-                Soon
-              </span>
-            </button>
-          ))}
         </div>
       </section>
     </div>

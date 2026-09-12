@@ -1,16 +1,34 @@
 import type { ReactNode } from "react";
 import { DIVISIONS } from "@/lib/divisions";
+import { getLeague } from "@/lib/leagues";
 import type { TeamCardData } from "@/components/TeamCard";
 
 export default function DivisionAccordion({
   teams,
+  league,
   openDivision,
   renderTeam,
 }: {
   teams: TeamCardData[];
+  league: string;
   openDivision?: string; // e.g. "AFC East" — expanded by default
   renderTeam: (team: TeamCardData) => ReactNode;
 }) {
+  const leagueDef = getLeague(league);
+
+  if (!leagueDef.hasDivisions) {
+    // No natural conference/division grouping (college sports, soccer) —
+    // just a flat grid, alphabetical.
+    const sorted = [...teams].sort((a, b) => a.displayName.localeCompare(b.displayName));
+    return (
+      <div className="grid grid-cols-2 gap-3 rounded-2xl border-[3px] border-ink p-4 sm:grid-cols-3 md:grid-cols-4">
+        {sorted.map((team) => (
+          <div key={team.id}>{renderTeam(team)}</div>
+        ))}
+      </div>
+    );
+  }
+
   const byAbbr = new Map(teams.map((t) => [t.abbreviation, t]));
 
   return (

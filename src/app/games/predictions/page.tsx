@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { getCurrentUser } from "@/lib/identity";
 import { getTeams } from "@/lib/espn";
+import { getLeague } from "@/lib/leagues";
 import { CURRENT_SEASON } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import { submitSeasonPrediction, submitAwardPredictions } from "@/app/actions";
@@ -17,7 +19,7 @@ export default async function PredictionsPage() {
   if (!user) return null;
 
   const [teams, seasonPrediction, awardPredictions] = await Promise.all([
-    getTeams(),
+    getTeams(getLeague("nfl").sportPath),
     prisma.seasonPrediction.findUnique({
       where: { userId_season: { userId: user.id, season: CURRENT_SEASON } },
     }),
@@ -35,13 +37,18 @@ export default async function PredictionsPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="font-display text-3xl uppercase sm:text-4xl">
-          Your {CURRENT_SEASON} <span className="mark-yellow">predictions</span>
-        </h1>
-        <p className="mt-2 text-muted">
-          Call every team&apos;s win total for the season, plus your award and Super Bowl futures.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="font-display text-3xl uppercase sm:text-4xl">
+            Your {CURRENT_SEASON} <span className="mark-yellow">predictions</span>
+          </h1>
+          <p className="mt-2 text-muted">
+            NFL win totals for now, plus your award and Super Bowl futures.
+          </p>
+        </div>
+        <Link href="/games" className="text-sm font-display uppercase underline decoration-yellow decoration-4 underline-offset-4">
+          ← Games
+        </Link>
       </div>
 
       <section className="rounded-2xl border-[3px] border-ink p-5">

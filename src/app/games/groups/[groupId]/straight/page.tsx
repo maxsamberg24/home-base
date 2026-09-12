@@ -2,9 +2,12 @@ import { notFound } from "next/navigation";
 import { getCurrentUser } from "@/lib/identity";
 import { prisma } from "@/lib/prisma";
 import { getScoreboard, getCurrentWeek } from "@/lib/espn";
+import { getLeague } from "@/lib/leagues";
 import { loadGradedEvents } from "@/lib/grading";
 import { submitStraightPick } from "@/app/actions";
 import WeekSelector from "@/components/WeekSelector";
+
+const NFL_PATH = getLeague("nfl").sportPath;
 
 export default async function StraightPickPage({
   params,
@@ -25,12 +28,12 @@ export default async function StraightPickPage({
   if (!group) notFound();
   if (!group.members.some((m) => m.userId === user.id)) notFound();
 
-  const defaults = sp.week ? null : await getCurrentWeek();
+  const defaults = sp.week ? null : await getCurrentWeek(NFL_PATH);
   const season = Number(sp.season) || defaults?.season || new Date().getFullYear();
   const seasonType = Number(sp.seasonType) || defaults?.seasonType || 2;
   const week = Number(sp.week) || defaults?.week || 1;
 
-  const board = await getScoreboard({ season, seasonType, week });
+  const board = await getScoreboard(NFL_PATH, { season, seasonType, week });
   const memberIds = group.members.map((m) => m.userId);
 
   const [myPicks, weekRows] = await Promise.all([

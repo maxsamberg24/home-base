@@ -1,11 +1,13 @@
-// Thin wrapper around ESPN's public (unofficial, undocumented) NFL endpoints.
-// Two hosts are involved: the "site" API (site.api.espn.com) for most
-// consumer-facing data, and the "core" API (sports.core.api.espn.com) for a
-// few things — like depth charts — that aren't exposed on the site API.
+// Thin wrapper around ESPN's public (unofficial, undocumented) sports
+// endpoints, parameterized by `sportPath` (e.g. "football/nfl",
+// "basketball/nba" — see src/lib/leagues.ts). Two hosts are involved: the
+// "site" API (site.api.espn.com) for most consumer-facing data, and the
+// "core" API (sports.core.api.espn.com) for a few things — like NFL depth
+// charts — that aren't exposed on the site API.
 
-const SITE_BASE = "https://site.api.espn.com/apis/site/v2/sports/football/nfl";
-const CORE_BASE = "https://sports.core.api.espn.com/v3/sports/football/nfl";
-const STANDINGS_BASE = "https://site.api.espn.com/apis/v2/sports/football/nfl";
+const SITE_ROOT = "https://site.api.espn.com/apis/site/v2/sports";
+const CORE_ROOT = "https://sports.core.api.espn.com/v3/sports";
+const STANDINGS_ROOT = "https://site.api.espn.com/apis/v2/sports";
 
 type CacheEntry = { expires: number; value: unknown };
 const cache = new Map<string, CacheEntry>();
@@ -101,16 +103,15 @@ export interface ScoreboardResponse {
   season: { year: number; type: number };
 }
 
-export async function getScoreboard(opts: {
-  season?: number;
-  seasonType?: number;
-  week?: number;
-} = {}): Promise<ScoreboardResponse> {
+export async function getScoreboard(
+  sportPath: string,
+  opts: { season?: number; seasonType?: number; week?: number } = {}
+): Promise<ScoreboardResponse> {
   const params = new URLSearchParams();
   if (opts.season) params.set("year", String(opts.season));
   if (opts.seasonType) params.set("seasontype", String(opts.seasonType));
   if (opts.week) params.set("week", String(opts.week));
-  const url = `${SITE_BASE}/scoreboard${params.toString() ? `?${params}` : ""}`;
+  const url = `${SITE_ROOT}/${sportPath}/scoreboard${params.toString() ? `?${params}` : ""}`;
   return cachedFetch<ScoreboardResponse>(url, 1 * MIN);
 }
 
@@ -131,12 +132,13 @@ export interface EspnTeamDetail {
   nextEvent?: EspnEvent[];
 }
 
-export async function getTeams(): Promise<EspnTeamRef[]> {
-  const url = `${SITE_BASE}/teams?limit=40`;
+export async function getTeams(sportPath: string): Promise<EspnTeamRef[]> {
+  const url = `${SITE_ROOT}/${sportPath}/teams?limit=200`;
   const data = await cachedFetch<{
     sports: { leagues: { teams: { team: EspnTeamDetail }[] }[] }[];
   }>(url, 60 * MIN);
-  return data.sports[0].leagues[0].teams.map((t) => ({
+  const teams = data.sports?.[0]?.leagues?.[0]?.teams ?? [];
+  return teams.map((t) => ({
     id: t.team.id,
     abbreviation: t.team.abbreviation,
     displayName: t.team.displayName,
@@ -149,8 +151,8 @@ export async function getTeams(): Promise<EspnTeamRef[]> {
   }));
 }
 
-export async function getTeam(teamId: string): Promise<EspnTeamDetail> {
-  const url = `${SITE_BASE}/teams/${teamId}`;
+export async function getTeam(sportPath: string, teamId: string): Promise<EspnTeamDetail> {
+  const url = `${SITE_ROOT}/${sportPath}/teams/${teamId}`;
   const data = await cachedFetch<{ team: EspnTeamDetail }>(url, 5 * MIN);
   return data.team;
 }
@@ -164,8 +166,12 @@ export interface EspnArticle {
   links: { web: { href: string } };
 }
 
-export async function getTeamNews(teamId: string, limit = 10): Promise<EspnArticle[]> {
-  const url = `${SITE_BASE}/news?team=${teamId}&limit=${limit}`;
+export async function getTeamNews(
+  sportPath: string,
+  teamId: string,
+  limit = 10
+): Promise<EspnArticle[]> {
+  const url = `${SITE_ROOT}/${sportPath}/news?team=${teamId}&limit=${limit}`;
   const data = await cachedFetch<{ articles: EspnArticle[] }>(url, 5 * MIN);
   return data.articles ?? [];
 }
@@ -188,10 +194,31 @@ export interface EspnRosterGroup {
   items: EspnRosterAthlete[];
 }
 
-export async function getTeamRoster(teamId: string): Promise<EspnRosterGroup[]> {
-  const url = `${SITE_BASE}/teams/${teamId}/roster`;
-  const data = await cachedFetch<{ athletes: EspnRosterGroup[] }>(url, 15 * MIN);
-  return data.athletes ?? [];
+// ESPN's roster shape differs by sport: NFL returns pre-grouped
+// {position, items[]}[]; NBA/MLB/soccer return a flat athlete[] instead.
+// Normalize both into the grouped shape, grouping the flat case by each
+// athlete's own position abbreviation.
+function normalizeRoster(athletes: unknown[]): EspnRosterGroup[] {
+  if (athletes.length === 0) return [];
+  const first = athletes[0] as Record<string, unknown>;
+  if (Array.isArray(first?.items)) return athletes as EspnRosterGroup[];
+
+  const groups = new Map<string, EspnRosterAthlete[]>();
+  for (const raw of athletes as EspnRosterAthlete[]) {
+    const label = raw.position?.abbreviation ?? "Other";
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label)!.push(raw);
+  }
+  return [...groups.entries()].map(([position, items]) => ({ position, items }));
+}
+
+export async function getTeamRoster(
+  sportPath: string,
+  teamId: string
+): Promise<EspnRosterGroup[]> {
+  const url = `${SITE_ROOT}/${sportPath}/teams/${teamId}/roster`;
+  const data = await cachedFetch<{ athletes: unknown[] }>(url, 15 * MIN);
+  return normalizeRoster(data.athletes ?? []);
 }
 
 export interface DepthChartAthlete {
@@ -220,11 +247,13 @@ export interface DepthChartFormation {
   positions: Record<string, DepthChartPosition>;
 }
 
+// Football-only concept on ESPN's core API.
 export async function getDepthChart(
+  sportPath: string,
   teamId: string,
   season = new Date().getFullYear()
 ): Promise<DepthChartFormation[]> {
-  const url = `${CORE_BASE}/seasons/${season}/teams/${teamId}/depthcharts`;
+  const url = `${CORE_ROOT}/${sportPath}/seasons/${season}/teams/${teamId}/depthcharts`;
   const data = await cachedFetch<{ items: DepthChartFormation[] }>(url, 30 * MIN);
   return data.items ?? [];
 }
@@ -240,8 +269,11 @@ export interface StandingsGroup {
   children?: StandingsGroup[];
 }
 
-export async function getStandings(season = new Date().getFullYear()): Promise<StandingsGroup[]> {
-  const url = `${STANDINGS_BASE}/standings?season=${season}`;
+export async function getStandings(
+  sportPath: string,
+  season = new Date().getFullYear()
+): Promise<StandingsGroup[]> {
+  const url = `${STANDINGS_ROOT}/${sportPath}/standings?season=${season}`;
   const data = await cachedFetch<{ children: StandingsGroup[] }>(url, 10 * MIN);
   return data.children ?? [];
 }
@@ -274,22 +306,39 @@ export interface ScheduleEvent {
 }
 
 export async function getTeamSchedule(
+  sportPath: string,
   teamId: string,
   season = new Date().getFullYear()
 ): Promise<ScheduleEvent[]> {
-  const url = `${SITE_BASE}/teams/${teamId}/schedule?season=${season}`;
+  const url = `${SITE_ROOT}/${sportPath}/teams/${teamId}/schedule?season=${season}`;
   const data = await cachedFetch<{ events: ScheduleEvent[] }>(url, 2 * MIN);
   return data.events ?? [];
 }
 
 // NFL regular season is 18 weeks; ESPN calendar weeks generally line up 1:1.
+// Other leagues (NBA/MLB/soccer) don't use "week" the same way, but ESPN's
+// scoreboard endpoint still accepts a `dates=YYYYMMDD` filter, used by
+// getScoreboardByDate below for those sports.
 export const REGULAR_SEASON_WEEKS = 18;
 
-export async function getCurrentWeek(): Promise<{ season: number; seasonType: number; week: number }> {
-  const board = await getScoreboard();
+export async function getCurrentWeek(
+  sportPath: string
+): Promise<{ season: number; seasonType: number; week: number }> {
+  const board = await getScoreboard(sportPath);
   return {
     season: board.season.year,
     seasonType: board.season.type,
     week: board.week?.number ?? 1,
   };
+}
+
+// Date-based scoreboard, for leagues that play daily rather than in weeks
+// (NBA, MLB, soccer). `date` is YYYY-MM-DD.
+export async function getScoreboardByDate(
+  sportPath: string,
+  date: string
+): Promise<ScoreboardResponse> {
+  const compact = date.replaceAll("-", "");
+  const url = `${SITE_ROOT}/${sportPath}/scoreboard?dates=${compact}`;
+  return cachedFetch<ScoreboardResponse>(url, 1 * MIN);
 }

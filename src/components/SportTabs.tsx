@@ -1,34 +1,28 @@
-const SPORTS = [
-  { label: "NFL", active: true },
-  { label: "NBA", active: false },
-  { label: "MLB", active: false },
-  { label: "NHL", active: false },
-];
+import Link from "next/link";
+import { LEAGUES } from "@/lib/leagues";
 
-export default function SportTabs() {
+export default function SportTabs({
+  basePath,
+  active,
+}: {
+  basePath: string;
+  active: string;
+}) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {SPORTS.map((sport) =>
-        sport.active ? (
-          <span
-            key={sport.label}
-            className="rounded-full border-[3px] border-ink bg-yellow px-4 py-1.5 font-display text-sm uppercase"
-          >
-            {sport.label}
-          </span>
-        ) : (
-          <span
-            key={sport.label}
-            title="Coming soon"
-            className="flex items-center gap-1.5 rounded-full border-[3px] border-hairline px-4 py-1.5 font-display text-sm uppercase text-muted"
-          >
-            {sport.label}
-            <span className="rounded-full bg-hairline px-1.5 py-0.5 text-[9px] font-sans font-bold normal-case tracking-wide text-muted">
-              Soon
-            </span>
-          </span>
-        )
-      )}
+      {LEAGUES.map((sport) => (
+        <Link
+          key={sport.slug}
+          href={`${basePath}?league=${sport.slug}`}
+          className={`rounded-full border-[3px] px-4 py-1.5 font-display text-sm uppercase transition-colors ${
+            sport.slug === active
+              ? "border-ink bg-yellow"
+              : "border-hairline text-muted hover:border-ink"
+          }`}
+        >
+          {sport.shortName}
+        </Link>
+      ))}
     </div>
   );
 }

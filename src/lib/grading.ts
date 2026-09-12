@@ -1,4 +1,8 @@
 import { getScoreboard, type EspnEvent } from "@/lib/espn";
+import { getLeague } from "@/lib/leagues";
+
+// Group pick'em games (spread guess / straight-up / survivor) are NFL-only for now.
+const NFL_PATH = getLeague("nfl").sportPath;
 
 export interface GradedEvent {
   eventId: string;
@@ -20,7 +24,7 @@ export async function loadGradedEvents(
 
   const boards = await Promise.all(
     [...unique.values()].map((w) =>
-      getScoreboard({ season: w.season, seasonType: w.seasonType, week: w.week }).catch(
+      getScoreboard(NFL_PATH, { season: w.season, seasonType: w.seasonType, week: w.week }).catch(
         () => ({ events: [] as EspnEvent[] })
       )
     )
