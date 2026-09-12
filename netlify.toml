@@ -1,5 +1,5 @@
 [build]
-  command = "npx prisma migrate deploy && npm run build"
+  command = "env | grep -iE 'DATABASE|NETLIFY_DB|POSTGRES|NEON' | cut -d= -f1 | sort; npx prisma migrate deploy && npm run build"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
