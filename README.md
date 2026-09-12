@@ -45,35 +45,43 @@ account system.
 
 ## Database: Netlify DB (Neon Postgres)
 
-The app uses Prisma 7 with the `@prisma/adapter-neon` driver adapter. It reads
-`DATABASE_URL` first and falls back to `NETLIFY_DB_URL` (see `prisma.config.ts`
-and `src/lib/prisma.ts`) — **Netlify's own database injects `NETLIFY_DB_URL`,
-not `DATABASE_URL`**, so both names need to be checked.
+The app uses Prisma 7 with the `@prisma/adapter-neon` driver adapter.
+`src/lib/prisma.ts` reads `DATABASE_URL` if set (local dev), otherwise calls
+`getConnectionString()` from the official `@netlify/database` SDK.
+
+**Important:** Netlify Database does **not** expose its connection string as
+a plain environment variable — not under any name, and not even to the
+build step. It's only reachable through that SDK call, and only from code
+running inside the deployed app (a Netlify Function), which is why
+`prisma migrate deploy` cannot run as part of `netlify.toml`'s build
+command — confirmed by grepping the build environment for every
+plausible variable name and finding nothing. `netlify.toml` therefore just
+runs `npm run build`, nothing database-related.
 
 - **Local dev**: run `netlify db init` in this project (requires the
   [Netlify CLI](https://docs.netlify.com/cli/get-started/) and `netlify login`
   first) — it provisions a dev database and writes `DATABASE_URL` to `.env`
   for you automatically.
-- **Production**: once a Netlify DB is attached to the site (Data & Storage →
-  Database in the dashboard), Netlify injects `NETLIFY_DB_URL` into the build
-  and runtime environment automatically.
-- The committed migration in `prisma/migrations/` was generated offline
-  (`prisma migrate diff --from-empty --to-schema ...`) against the Postgres
-  provider, so the very first `prisma migrate deploy` against a fresh database
-  creates every table.
+- **Production**: a Netlify DB attached to the site (Data & Storage →
+  Database in the dashboard) is reachable by the deployed app automatically
+  via the SDK — no env var to configure.
+- **Applying migrations to production**: since the build can't reach the
+  database, `prisma/migrations/` has to be applied out-of-band, once per new
+  migration — e.g. `netlify db` CLI commands, or running
+  `npx prisma migrate deploy` locally with `DATABASE_URL` pointed at the
+  production connection string (visible in the dashboard's Database page
+  under the `production` branch).
 
 ## Deploying to Netlify
 
 1. Push this repo to GitHub (see **Outstanding manual step** below if that
    hasn't happened yet).
 2. In Netlify: **Add new site → Import an existing project**, pick the repo.
-   Netlify auto-detects Next.js; `netlify.toml` is already set up to run
-   `prisma migrate deploy` before every build.
-3. Provision a Netlify DB for the site (Data & Storage → Database in the
-   dashboard, or `netlify db init` from a linked local checkout) so
-   `NETLIFY_DB_URL` is set in the site's environment.
-4. Deploy. Every subsequent push runs migrations automatically before the
-   Next.js build.
+   Netlify auto-detects Next.js.
+3. Attach a Netlify DB to the site (Data & Storage → Database in the
+   dashboard).
+4. Apply migrations once (see above) so the tables actually exist.
+5. Deploy.
 
 ### Outstanding manual step: GitHub
 
