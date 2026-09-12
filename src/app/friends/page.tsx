@@ -38,7 +38,7 @@ export default async function FriendsPage() {
   );
 
   const inviteMessage = user.friendCode
-    ? `${user.name} wants to be friends on Home Base! Use this code to add them: ${user.friendCode}`
+    ? `${user.name} wants to be friends on The Locker Room! Use this code to add them: ${user.friendCode}`
     : "";
 
   return (

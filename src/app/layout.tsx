@@ -21,7 +21,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Home Base",
+  title: "The Locker Room",
   description: "Every team you follow, your schedule, standings, friends, and games — in one hub.",
 };
 

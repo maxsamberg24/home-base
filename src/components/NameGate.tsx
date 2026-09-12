@@ -1,5 +1,5 @@
 import { createIdentity } from "@/app/actions";
-import HomePlateIcon from "@/components/HomePlateIcon";
+import BallInHandIcon from "@/components/BallInHandIcon";
 
 export default function NameGate() {
   return (
@@ -7,11 +7,12 @@ export default function NameGate() {
       <div className="w-full max-w-sm rounded-2xl border-[3px] border-ink bg-paper p-8 shadow-[6px_6px_0_0_#111111]">
         <div className="mb-6 text-center">
           <span className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full border-[3px] border-ink bg-yellow">
-            <HomePlateIcon className="h-7 w-7 text-ink" />
+            <BallInHandIcon className="h-8 w-8 text-ink" />
           </span>
-          <h1 className="font-display text-xl uppercase">Welcome to Home Base</h1>
+          <h1 className="font-display text-xl uppercase">Welcome to The Locker Room</h1>
           <p className="mt-2 text-sm text-muted">
-            Pick a display name so friends can see your teams and challenge you to picks.
+            Pick a display name so friends can see your teams and challenge you to picks. Used
+            this before? Type the same name to get back to your account.
           </p>
         </div>
         <form action={createIdentity} className="space-y-3">

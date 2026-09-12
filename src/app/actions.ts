@@ -22,7 +22,14 @@ export async function createIdentity(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   if (!name) throw new Error("Name is required");
 
-  const user = await prisma.user.create({ data: { name } });
+  // There's no password — typing the same name again is how you "log back
+  // in" to your existing account (teams, friends, everything) instead of
+  // silently spinning up a blank duplicate. Case-insensitive so "Max" and
+  // "max" land on the same person.
+  const existing = await prisma.user.findFirst({
+    where: { name: { equals: name, mode: "insensitive" } },
+  });
+  const user = existing ?? (await prisma.user.create({ data: { name } }));
   const store = await cookies();
   store.set(SESSION_COOKIE, user.id, {
     httpOnly: true,

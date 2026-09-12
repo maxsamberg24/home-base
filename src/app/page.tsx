@@ -70,17 +70,19 @@ function FeedCard({ item }: { item: FeedItem }) {
   const draw = item.state === "post" && !won && !lost;
   const isLive = item.state === "in";
 
+  // Anything not yet played (today or later) stays plain white — only a
+  // live game (pulsing) or one that already finished today gets colored.
+  // Once "today" moves on, a finished game stops matching todayEvent and
+  // the team's actual next game takes its place automatically.
   const cardClass = isLive
     ? "border-ink bg-emerald-200 animate-pulse"
-    : item.isToday && item.state === "pre"
-      ? "border-ink bg-emerald-50"
-      : item.isToday && item.state === "post"
-        ? draw
-          ? "border-ink bg-neutral-100"
-          : won
-            ? "border-ink bg-emerald-50"
-            : "border-ink bg-red-50"
-        : "border-ink bg-neutral-100";
+    : item.state === "post"
+      ? draw
+        ? "border-ink bg-neutral-100"
+        : won
+          ? "border-ink bg-emerald-50"
+          : "border-ink bg-red-50"
+      : "border-ink";
 
   const espnSlug = getLeague(item.league).espnBoxscoreSlug;
   const espnUrl = `https://www.espn.com/${espnSlug}/game/_/gameId/${item.event.id}`;
@@ -175,7 +177,8 @@ export default async function Home({
 
       {visibleFollowed.length > 0 && (
         <section>
-          <h2 className="font-display text-2xl uppercase mb-4">Your teams</h2>
+          <h2 className="font-display text-2xl uppercase mb-1">Your teams</h2>
+          <p className="text-muted mb-4">Click on your team for more news, stats, roster, & more.</p>
           {visibleFollowed.length < followed.length && (
             <p className="mb-3 text-xs text-muted">
               {followed.length - visibleFollowed.length} more hidden by the filter below.
