@@ -5,13 +5,17 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-if (!process.env.DATABASE_URL) {
+// Netlify DB injects NETLIFY_DB_URL, not DATABASE_URL — support both so
+// local dev (DATABASE_URL in .env) and Netlify both work.
+const connectionString = process.env.DATABASE_URL ?? process.env.NETLIFY_DB_URL;
+
+if (!connectionString) {
   throw new Error(
-    "DATABASE_URL is not set. Set it to your Netlify DB / Neon Postgres connection string (see README)."
+    "No database connection string found (checked DATABASE_URL and NETLIFY_DB_URL). See README."
   );
 }
 
-const adapter = new PrismaNeon({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaNeon({ connectionString });
 
 export const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter });
 

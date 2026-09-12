@@ -45,16 +45,18 @@ account system.
 
 ## Database: Netlify DB (Neon Postgres)
 
-The app uses Prisma 7 with the `@prisma/adapter-neon` driver adapter, reading
-a single `DATABASE_URL` env var (see `.env`).
+The app uses Prisma 7 with the `@prisma/adapter-neon` driver adapter. It reads
+`DATABASE_URL` first and falls back to `NETLIFY_DB_URL` (see `prisma.config.ts`
+and `src/lib/prisma.ts`) — **Netlify's own database injects `NETLIFY_DB_URL`,
+not `DATABASE_URL`**, so both names need to be checked.
 
 - **Local dev**: run `netlify db init` in this project (requires the
   [Netlify CLI](https://docs.netlify.com/cli/get-started/) and `netlify login`
   first) — it provisions a dev database and writes `DATABASE_URL` to `.env`
   for you automatically.
-- **Production**: once the site exists on Netlify, link/provision a Netlify DB
-  from the site's dashboard (or `netlify db init` again from a linked site) —
-  Netlify injects `DATABASE_URL` into the deploy automatically.
+- **Production**: once a Netlify DB is attached to the site (Data & Storage →
+  Database in the dashboard), Netlify injects `NETLIFY_DB_URL` into the build
+  and runtime environment automatically.
 - The committed migration in `prisma/migrations/` was generated offline
   (`prisma migrate diff --from-empty --to-schema ...`) against the Postgres
   provider, so the very first `prisma migrate deploy` against a fresh database
@@ -67,9 +69,9 @@ a single `DATABASE_URL` env var (see `.env`).
 2. In Netlify: **Add new site → Import an existing project**, pick the repo.
    Netlify auto-detects Next.js; `netlify.toml` is already set up to run
    `prisma migrate deploy` before every build.
-3. Provision a Netlify DB for the site (Site settings → Database, or
-   `netlify db init` from a linked local checkout) so `DATABASE_URL` is set in
-   the site's environment.
+3. Provision a Netlify DB for the site (Data & Storage → Database in the
+   dashboard, or `netlify db init` from a linked local checkout) so
+   `NETLIFY_DB_URL` is set in the site's environment.
 4. Deploy. Every subsequent push runs migrations automatically before the
    Next.js build.
 

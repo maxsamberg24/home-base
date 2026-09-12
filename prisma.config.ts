@@ -9,6 +9,8 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // Netlify DB injects NETLIFY_DB_URL, not DATABASE_URL — support both so
+    // local dev (DATABASE_URL in .env) and Netlify both work.
+    url: process.env["DATABASE_URL"] ?? process.env["NETLIFY_DB_URL"],
   },
 });
