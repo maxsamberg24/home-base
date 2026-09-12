@@ -14,6 +14,8 @@ import {
 import { divisionForAbbreviation } from "@/lib/divisions";
 import { followTeam, unfollowTeam, saveTeamNote } from "@/app/actions";
 import { formatGameDate, formatGameTime } from "@/lib/dates";
+import { pickCardBackground } from "@/lib/color";
+import TeamLogoBadge from "@/components/TeamLogoBadge";
 
 function GameRow({
   event,
@@ -32,17 +34,23 @@ function GameRow({
   const selfScore = (self as { score?: { displayValue: string } }).score?.displayValue;
   const oppScore = (opp as { score?: { displayValue: string } }).score?.displayValue;
   const won = self.winner === true;
-  const lost = isFinal && self.winner === false;
+  const lost = isFinal && self.winner === false && opp.winner === true;
+  const draw = isFinal && !won && !lost;
 
   return (
     <div
       className={`flex items-center justify-between rounded-lg border-2 px-3 py-2 text-sm ${
-        isFinal ? (won ? "border-hairline bg-emerald-50" : "border-hairline bg-red-50") : "border-hairline"
+        isFinal
+          ? draw
+            ? "border-hairline bg-neutral-100"
+            : won
+              ? "border-hairline bg-emerald-50"
+              : "border-hairline bg-red-50"
+          : "border-hairline"
       }`}
     >
       <div className="flex items-center gap-2">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        {opp.team.logo && <img src={opp.team.logo} alt="" className="h-5 w-5" />}
+        <TeamLogoBadge src={opp.team.logo} size={20} />
         <span>
           {self.homeAway === "home" ? "vs" : "@"} {opp.team.shortDisplayName ?? opp.team.name}
         </span>
@@ -50,8 +58,8 @@ function GameRow({
       <div className="flex items-center gap-2">
         {isFinal ? (
           <>
-            <span className={won ? "font-bold" : lost ? "font-bold text-muted" : ""}>
-              {won ? "W" : lost ? "L" : ""} {selfScore}-{oppScore}
+            <span className={won ? "font-bold" : lost ? "font-bold text-muted" : "font-bold"}>
+              {won ? "W" : lost ? "L" : "D"} {selfScore}-{oppScore}
             </span>
             <a
               href={`https://www.espn.com/${boxscoreSlug}/boxscore/_/gameId/${event.id}`}
@@ -130,7 +138,7 @@ export default async function TeamProfilePage({
 
   const record = team.record?.items?.find((i) => i.type === "total") ?? team.record?.items?.[0];
   const div = leagueDef.hasDivisions ? divisionForAbbreviation(team.abbreviation) : undefined;
-  const bg = team.color ? `#${team.color}` : "#111111";
+  const bg = pickCardBackground(team.color, team.alternateColor);
 
   return (
     <div className="space-y-8">
@@ -141,10 +149,7 @@ export default async function TeamProfilePage({
           <span>{div ? `${div.conference} ${div.division}` : ""}</span>
         </div>
         <div className="flex flex-col items-center gap-6 p-6 sm:flex-row" style={{ backgroundColor: bg }}>
-          {team.logos?.[0]?.href && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={team.logos[0].href} alt="" className="h-28 w-28 object-contain drop-shadow-[0_4px_10px_rgba(0,0,0,0.35)]" />
-          )}
+          <TeamLogoBadge src={team.logos?.[0]?.href} size={112} />
           <div className="text-center text-paper sm:text-left">
             <h1 className="font-display text-3xl uppercase sm:text-4xl">{team.displayName}</h1>
             {record?.summary && <p className="mt-1 opacity-90">{record.summary}</p>}

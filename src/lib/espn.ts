@@ -269,11 +269,14 @@ export interface StandingsGroup {
   children?: StandingsGroup[];
 }
 
-export async function getStandings(
-  sportPath: string,
-  season = new Date().getFullYear()
-): Promise<StandingsGroup[]> {
-  const url = `${STANDINGS_ROOT}/${sportPath}/standings?season=${season}`;
+// No `season` param by default: ESPN's own default correctly resolves to
+// whichever season is "current" for that sport right now (including
+// upcoming, not-yet-started seasons showing all-zero records) — sports
+// label season years differently (NBA/NCAAMB by the year the season ends,
+// NFL/MLB by the year it starts), so hardcoding "this calendar year" was
+// silently showing last season's *completed* standings for some leagues.
+export async function getStandings(sportPath: string, season?: number): Promise<StandingsGroup[]> {
+  const url = `${STANDINGS_ROOT}/${sportPath}/standings${season ? `?season=${season}` : ""}`;
   const data = await cachedFetch<{ children: StandingsGroup[] }>(url, 10 * MIN);
   return data.children ?? [];
 }

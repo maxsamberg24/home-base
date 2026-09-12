@@ -1,6 +1,7 @@
 import { divisionForAbbreviation } from "@/lib/divisions";
 import { getLeague } from "@/lib/leagues";
 import { pickCardBackground } from "@/lib/color";
+import TeamLogoBadge from "@/components/TeamLogoBadge";
 
 export interface TeamCardData {
   id: string;
@@ -36,10 +37,7 @@ export default function TeamCard({
       </div>
 
       <div className={`relative flex ${panelHeight} items-center justify-center`} style={{ backgroundColor: bg }}>
-        {logoUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={logoUrl} alt="" className="h-16 w-16 object-contain drop-shadow-[0_2px_6px_rgba(0,0,0,0.35)]" />
-        )}
+        <TeamLogoBadge src={logoUrl} size={size === "sm" ? 56 : 72} />
         <span className="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full border-2 border-ink bg-yellow text-[10px] font-black text-ink">
           {team.abbreviation}
         </span>

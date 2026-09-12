@@ -108,6 +108,11 @@ model Group {
   createdById String
   createdAt   DateTime @default(now())
 
+  // Survivor pool buy-in: agreed on by the group, then locked before picks
+  // start so the pot (buyIn * entrant count) is fixed for the season.
+  survivorBuyIn   Float?
+  survivorLocked  Boolean @default(false)
+
   members       GroupMember[]
   linePicks     LinePick[]
   straightPicks StraightPick[]

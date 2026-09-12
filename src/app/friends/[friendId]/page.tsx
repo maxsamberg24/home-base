@@ -3,8 +3,19 @@ import Link from "next/link";
 import { getCurrentUser } from "@/lib/identity";
 import { getFriendIds } from "@/lib/friends";
 import { getFollowedTeams } from "@/lib/followedTeams";
+import { getTeams } from "@/lib/espn";
+import { getLeague } from "@/lib/leagues";
+import { CURRENT_SEASON } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import TeamCard from "@/components/TeamCard";
+
+const AWARD_LABELS: Record<string, string> = {
+  SB_WINNER: "Super Bowl champion",
+  MVP: "MVP",
+  OROY: "Offensive Rookie of the Year",
+  DROY: "Defensive Rookie of the Year",
+  COACH_OY: "Coach of the Year",
+};
 
 export default async function FriendProfilePage({
   params,
@@ -21,7 +32,7 @@ export default async function FriendProfilePage({
   const friend = await prisma.user.findUnique({ where: { id: friendId } });
   if (!friend) notFound();
 
-  const [teams, wagers] = await Promise.all([
+  const [teams, wagers, openPosted, seasonPrediction, awardPredictions, nflTeams] = await Promise.all([
     getFollowedTeams(friend.id),
     prisma.wager.findMany({
       where: {
@@ -32,7 +43,23 @@ export default async function FriendProfilePage({
       },
       orderBy: { createdAt: "desc" },
     }),
+    prisma.wager.findMany({
+      where: { creatorId: friendId, opponentId: null, status: "OPEN" },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.seasonPrediction.findUnique({
+      where: { userId_season: { userId: friendId, season: CURRENT_SEASON } },
+    }),
+    prisma.awardPrediction.findMany({ where: { userId: friendId, season: CURRENT_SEASON } }),
+    getTeams(getLeague("nfl").sportPath).catch(() => []),
   ]);
+
+  const winTotals: Record<string, number> = seasonPrediction ? JSON.parse(seasonPrediction.winTotals) : {};
+  const topPicks = Object.entries(winTotals)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([teamId, wins]) => ({ team: nflTeams.find((t) => t.id === teamId), wins }))
+    .filter((p) => p.team);
 
   return (
     <div className="space-y-8">
@@ -59,6 +86,70 @@ export default async function FriendProfilePage({
               <Link key={`${t.league}:${t.teamId}`} href={`/teams/${t.league}/${t.teamId}`}>
                 <TeamCard team={t.team} league={t.league} size="sm" />
               </Link>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section>
+        <h2 className="font-display text-xl uppercase mb-3">{CURRENT_SEASON} predictions</h2>
+        {topPicks.length === 0 && awardPredictions.length === 0 ? (
+          <p className="text-sm text-muted">No predictions made yet.</p>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            {topPicks.length > 0 && (
+              <div className="rounded-xl border-2 border-hairline p-4">
+                <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-muted">
+                  Top predicted win totals
+                </h3>
+                <ul className="space-y-1.5 text-sm">
+                  {topPicks.map(({ team, wins }) => (
+                    <li key={team!.id} className="flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-2">
+                        {team!.logo && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={team!.logo} alt="" className="h-4 w-4" />
+                        )}
+                        {team!.displayName}
+                      </span>
+                      <span className="font-bold">{wins}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {awardPredictions.length > 0 && (
+              <div className="rounded-xl border-2 border-hairline p-4">
+                <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-muted">Futures</h3>
+                <ul className="space-y-1.5 text-sm">
+                  {awardPredictions.map((a) => (
+                    <li key={a.category} className="flex items-center justify-between gap-2">
+                      <span className="text-muted">{AWARD_LABELS[a.category] ?? a.category}</span>
+                      <span className="font-bold">
+                        {a.category === "SB_WINNER" ? nflTeams.find((t) => t.id === a.value)?.displayName ?? a.value : a.value}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+
+      <section>
+        <h2 className="font-display text-xl uppercase mb-3">Posted picks</h2>
+        {openPosted.length === 0 ? (
+          <p className="text-sm text-muted">No open picks posted right now.</p>
+        ) : (
+          <div className="space-y-2">
+            {openPosted.map((w) => (
+              <div key={w.id} className="rounded-xl border-2 border-hairline p-3 text-sm">
+                <span className="font-medium">{w.description}</span>{" "}
+                <span className="text-muted">
+                  {w.line ? `(${w.line}) · ` : ""}${w.stake} · open to any friend
+                </span>
+              </div>
             ))}
           </div>
         )}

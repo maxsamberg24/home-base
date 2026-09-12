@@ -44,7 +44,7 @@ export default function Nav({ user }: { user: User }) {
               type="submit"
               className="text-xs text-muted underline decoration-dotted hover:text-ink transition-colors"
             >
-              switch user
+              log out
             </button>
           </form>
         </div>

@@ -1,15 +1,126 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { getCurrentUser } from "@/lib/identity";
-import { getTeams } from "@/lib/espn";
+import { getTeams, getTeamSchedule, type ScheduleEvent } from "@/lib/espn";
 import { getLeague } from "@/lib/leagues";
-import { getFollowedTeams } from "@/lib/followedTeams";
+import { getFollowedTeams, type FollowedTeam } from "@/lib/followedTeams";
 import { followTeam, unfollowTeam } from "@/app/actions";
-import { relativeDayLabel, formatGameDate, formatGameTime } from "@/lib/dates";
+import { formatGameDate, formatGameTime, etDateKey } from "@/lib/dates";
 import { TEAM_FILTER_COOKIE, teamKey, parseFilterCookie } from "@/lib/teamFilter";
 import TeamCard from "@/components/TeamCard";
+import TeamLogoBadge from "@/components/TeamLogoBadge";
 import SportTabs from "@/components/SportTabs";
 import DivisionAccordion from "@/components/DivisionAccordion";
+
+interface FeedItem {
+  league: string;
+  teamId: string;
+  team: FollowedTeam["team"];
+  event: ScheduleEvent;
+  isToday: boolean;
+  state: "pre" | "in" | "post";
+}
+
+async function buildFeed(visibleFollowed: FollowedTeam[]): Promise<FeedItem[]> {
+  const todayKey = etDateKey(new Date());
+
+  const items = await Promise.all(
+    visibleFollowed.map(async (f): Promise<FeedItem | null> => {
+      const league = getLeague(f.league);
+      const schedule = await getTeamSchedule(league.sportPath, f.teamId).catch(() => []);
+      const todayEvent = schedule.find((e) => etDateKey(new Date(e.date)) === todayKey);
+      const nextUpcoming = schedule
+        .filter((e) => e.competitions[0]?.status.type.state === "pre")
+        .sort((a, b) => +new Date(a.date) - +new Date(b.date))[0];
+      const event = todayEvent ?? nextUpcoming;
+      if (!event) return null;
+      return {
+        league: f.league,
+        teamId: f.teamId,
+        team: f.team,
+        event,
+        isToday: !!todayEvent,
+        state: event.competitions[0].status.type.state,
+      };
+    })
+  );
+
+  const priority = (item: FeedItem) => {
+    if (item.state === "in") return 0;
+    if (item.isToday && item.state === "pre") return 1;
+    if (item.isToday && item.state === "post") return 2;
+    return 3;
+  };
+
+  return items
+    .filter((i): i is FeedItem => i !== null)
+    .sort((a, b) => priority(a) - priority(b) || +new Date(a.event.date) - +new Date(b.event.date));
+}
+
+function FeedCard({ item }: { item: FeedItem }) {
+  const comp = item.event.competitions[0];
+  const self = comp.competitors.find((c) => c.team.id === item.teamId);
+  const opp = comp.competitors.find((c) => c.team.id !== item.teamId);
+  if (!self || !opp) return null;
+
+  const selfScore = (self as { score?: { displayValue: string } }).score?.displayValue;
+  const oppScore = (opp as { score?: { displayValue: string } }).score?.displayValue;
+  const won = self.winner === true;
+  const lost = item.state === "post" && self.winner === false && opp.winner === true;
+  const draw = item.state === "post" && !won && !lost;
+  const isLive = item.state === "in";
+
+  const cardClass = isLive
+    ? "border-ink bg-emerald-200 animate-pulse"
+    : item.isToday && item.state === "pre"
+      ? "border-ink bg-emerald-50"
+      : item.isToday && item.state === "post"
+        ? draw
+          ? "border-ink bg-neutral-100"
+          : won
+            ? "border-ink bg-emerald-50"
+            : "border-ink bg-red-50"
+        : "border-ink bg-neutral-100";
+
+  const espnSlug = getLeague(item.league).espnBoxscoreSlug;
+  const espnUrl = `https://www.espn.com/${espnSlug}/game/_/gameId/${item.event.id}`;
+
+  return (
+    <div className={`rounded-2xl border-[3px] p-4 ${cardClass}`}>
+      <Link href={`/teams/${item.league}/${item.teamId}`} className="block">
+        <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-muted">
+          <span>{getLeague(item.league).shortName}</span>
+          {isLive && <span className="text-ink">● Live</span>}
+        </div>
+        <div className="mt-2 flex items-center gap-2">
+          <TeamLogoBadge src={item.team.logos?.[0]?.href} size={32} />
+          <span className="font-display uppercase">{item.team.displayName}</span>
+        </div>
+        <div className="mt-3 text-sm">
+          {self.homeAway === "home" ? "vs" : "@"} {opp.team.shortDisplayName ?? opp.team.name}
+        </div>
+      </Link>
+      <div className="mt-1 flex items-center justify-between">
+        <span className="text-sm font-bold text-ink">
+          {item.state === "in" && `Live · ${selfScore}-${oppScore}`}
+          {item.state === "post" && `${draw ? "D" : won ? "W" : "L"} ${selfScore}-${oppScore}`}
+          {item.state === "pre" &&
+            (item.isToday ? `Today · ${formatGameTime(item.event.date)}` : `${formatGameDate(item.event.date)} · ${formatGameTime(item.event.date)}`)}
+        </span>
+        {item.state !== "pre" && (
+          <a
+            href={espnUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[10px] font-display uppercase underline decoration-yellow decoration-4 underline-offset-4"
+          >
+            ESPN →
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default async function Home({
   searchParams,
@@ -33,10 +144,7 @@ export default async function Home({
   const selected = parseFilterCookie(filterCookie, allKeys);
   const visibleFollowed = followed.filter((f) => selected.has(teamKey(f.league, f.teamId)));
 
-  const nextUp = visibleFollowed
-    .map((f) => ({ ...f, next: f.team.nextEvent?.[0] }))
-    .filter((f) => f.next)
-    .sort((a, b) => +new Date(a.next!.date) - +new Date(b.next!.date));
+  const feed = await buildFeed(visibleFollowed);
 
   return (
     <div className="space-y-14">
@@ -53,44 +161,14 @@ export default async function Home({
         </p>
       </section>
 
-      {nextUp.length > 0 && (
+      {feed.length > 0 && (
         <section>
           <h2 className="font-display text-2xl uppercase mb-1">Next up</h2>
-          <p className="text-muted mb-4">One card per team, soonest first.</p>
+          <p className="text-muted mb-4">Live games first, then today&apos;s, then what&apos;s coming up.</p>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {nextUp.map(({ league, teamId, team, next }) => {
-              const comp = next!.competitions[0];
-              const self = comp.competitors.find((c) => c.team.id === teamId);
-              const opp = comp.competitors.find((c) => c.team.id !== teamId);
-              const dayLabel = relativeDayLabel(next!.date);
-              const record = team.record?.items?.find((i) => i.type === "total") ?? team.record?.items?.[0];
-
-              return (
-                <Link
-                  key={`${league}:${teamId}`}
-                  href={`/teams/${league}/${teamId}`}
-                  className="rounded-2xl border-[3px] border-ink p-4 transition-transform hover:-translate-y-1 hover:shadow-[4px_4px_0_0_#111111]"
-                >
-                  <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-muted">
-                    <span>{getLeague(league).shortName}</span>
-                    {record?.summary && <span>{record.summary}</span>}
-                  </div>
-                  <div className="mt-2 flex items-center gap-2">
-                    {team.logos?.[0]?.href && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={team.logos[0].href} alt="" className="h-8 w-8 object-contain" />
-                    )}
-                    <span className="font-display uppercase">{team.displayName}</span>
-                  </div>
-                  <div className="mt-3 text-sm">
-                    {self?.homeAway === "home" ? "vs" : "@"} {opp?.team.shortDisplayName ?? opp?.team.name}
-                  </div>
-                  <div className="mt-1 text-sm font-bold text-ink">
-                    {dayLabel ?? formatGameDate(next!.date)} · {formatGameTime(next!.date)}
-                  </div>
-                </Link>
-              );
-            })}
+            {feed.map((item) => (
+              <FeedCard key={`${item.league}:${item.teamId}`} item={item} />
+            ))}
           </div>
         </section>
       )}

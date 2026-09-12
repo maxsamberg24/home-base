@@ -6,6 +6,7 @@ import { getTeamSchedule, type ScheduleEvent } from "@/lib/espn";
 import { getLeague } from "@/lib/leagues";
 import { TEAM_FILTER_COOKIE, teamKey, parseFilterCookie } from "@/lib/teamFilter";
 import { etDateKey, etDateParts, formatGameTime } from "@/lib/dates";
+import TeamLogoBadge from "@/components/TeamLogoBadge";
 
 interface EnrichedGame {
   id: string;
@@ -22,6 +23,7 @@ interface EnrichedGame {
   selfScore?: string;
   oppScore?: string;
   won?: boolean;
+  oppWon?: boolean;
 }
 
 function enrich(league: string, teamId: string, teamAbbr: string, teamLogo: string | undefined, teamColor: string | undefined, events: ScheduleEvent[]): EnrichedGame[] {
@@ -46,6 +48,7 @@ function enrich(league: string, teamId: string, teamAbbr: string, teamLogo: stri
       selfScore: (self as { score?: { displayValue: string } }).score?.displayValue,
       oppScore: (opp as { score?: { displayValue: string } }).score?.displayValue,
       won: self.winner,
+      oppWon: opp.winner,
     });
   }
   return out;
@@ -204,23 +207,24 @@ export default async function SchedulePage({
           <div key={group.key}>
             <h3 className="mb-2 font-display text-sm uppercase text-muted">{group.label}</h3>
             <div className="space-y-2">
-              {group.games.map((g) => (
+              {group.games.map((g) => {
+                const isDraw = g.state === "post" && !g.won && !g.oppWon;
+                return (
                 <div
                   key={g.id + g.teamId}
                   className={`flex items-center justify-between rounded-xl border-[3px] p-3 ${
                     g.state === "post"
-                      ? g.won
-                        ? "border-ink bg-emerald-50"
-                        : "border-ink bg-red-50"
+                      ? isDraw
+                        ? "border-ink bg-neutral-100"
+                        : g.won
+                          ? "border-ink bg-emerald-50"
+                          : "border-ink bg-red-50"
                       : "border-ink"
                   }`}
                   style={{ borderLeftWidth: 8, borderLeftColor: g.teamColor ? `#${g.teamColor}` : "#111111" }}
                 >
                   <div className="flex items-center gap-3">
-                    {g.teamLogo && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={g.teamLogo} alt="" className="h-7 w-7" />
-                    )}
+                    <TeamLogoBadge src={g.teamLogo} size={28} />
                     <div>
                       <div className="font-display text-sm uppercase">
                         {g.teamAbbr} {g.homeAway === "home" ? "vs" : "@"} {g.opponentAbbr}
@@ -235,7 +239,7 @@ export default async function SchedulePage({
                     {g.state === "post" ? (
                       <>
                         <span className="font-bold">
-                          {g.won ? "W" : "L"} {g.selfScore}-{g.oppScore}
+                          {isDraw ? "D" : g.won ? "W" : "L"} {g.selfScore}-{g.oppScore}
                         </span>
                         <a
                           href={`https://www.espn.com/${getLeague(g.league).espnBoxscoreSlug}/boxscore/_/gameId/${g.id}`}
@@ -256,7 +260,8 @@ export default async function SchedulePage({
                     )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         ))}

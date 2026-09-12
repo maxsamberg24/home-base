@@ -4,8 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { getScoreboard, getCurrentWeek } from "@/lib/espn";
 import { getLeague } from "@/lib/leagues";
 import { loadGradedEvents } from "@/lib/grading";
-import { submitSurvivorPick } from "@/app/actions";
+import { submitSurvivorPick, setSurvivorBuyIn, lockSurvivorPool } from "@/app/actions";
 import WeekSelector from "@/components/WeekSelector";
+import TeamLogoBadge from "@/components/TeamLogoBadge";
 
 const NFL_PATH = getLeague("nfl").sportPath;
 
@@ -74,6 +75,11 @@ export default async function SurvivorPage({
     return b.survived - a.survived;
   });
 
+  const aliveCount = status.filter((r) => !r.eliminatedWeek).length;
+  const pot = (group.survivorBuyIn ?? 0) * memberIds.length;
+  const poolWinner =
+    group.survivorLocked && memberIds.length > 1 && aliveCount === 1 ? status[0] : null;
+
   return (
     <div className="space-y-6">
       <div>
@@ -91,6 +97,58 @@ export default async function SurvivorPage({
           {sp.error}
         </div>
       )}
+
+      {poolWinner && (
+        <div className="rounded-2xl border-[3px] border-ink bg-yellow p-4 text-center">
+          <div className="font-display text-lg uppercase">🏆 {poolWinner.name} wins the pool!</div>
+          <div className="text-sm">Last one standing collects ${pot.toFixed(0)}.</div>
+        </div>
+      )}
+
+      <div className="rounded-2xl border-[3px] border-ink p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-display uppercase text-sm">Pool</h2>
+            {group.survivorBuyIn != null ? (
+              <p className="text-sm text-muted">
+                ${group.survivorBuyIn.toFixed(0)} buy-in · {memberIds.length} entrant
+                {memberIds.length === 1 ? "" : "s"} · pot ${pot.toFixed(0)}
+                {group.survivorLocked ? " · 🔒 locked" : " · not locked yet"}
+              </p>
+            ) : (
+              <p className="text-sm text-muted">No buy-in set — this pool is just for fun right now.</p>
+            )}
+          </div>
+          {!group.survivorLocked && (
+            <div className="flex flex-wrap items-center gap-2">
+              <form action={setSurvivorBuyIn} className="flex items-center gap-2">
+                <input type="hidden" name="groupId" value={groupId} />
+                <input
+                  type="number"
+                  name="buyIn"
+                  step="1"
+                  min="0"
+                  required
+                  defaultValue={group.survivorBuyIn ?? ""}
+                  placeholder="Buy-in $"
+                  className="w-24 rounded-md border-2 border-ink bg-transparent px-2 py-1 text-sm outline-none focus:bg-yellow-soft"
+                />
+                <button className="rounded-full border-2 border-ink px-3 py-1 text-xs font-bold uppercase hover:bg-yellow-soft">
+                  {group.survivorBuyIn != null ? "Update" : "Set buy-in"}
+                </button>
+              </form>
+              {group.survivorBuyIn != null && (
+                <form action={lockSurvivorPool}>
+                  <input type="hidden" name="groupId" value={groupId} />
+                  <button className="rounded-full border-2 border-ink bg-ink px-3 py-1 text-xs font-bold uppercase text-paper hover:bg-yellow hover:text-ink">
+                    Lock pool
+                  </button>
+                </form>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
 
       <WeekSelector
         basePath={`/games/groups/${groupId}/survivor`}
@@ -139,8 +197,7 @@ export default async function SurvivorPage({
                           isPicked ? "border-ink bg-yellow" : "border-hairline hover:bg-yellow-soft"
                         } ${isWinner ? "ring-2 ring-ink ring-offset-1" : ""}`}
                       >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        {c.team.logo && <img src={c.team.logo} alt="" className="h-6 w-6" />}
+                        <TeamLogoBadge src={c.team.logo} size={24} />
                         <span className="truncate">{c.team.shortDisplayName ?? c.team.name}</span>
                         {c.score && wasCompleted && (
                           <span className="ml-auto font-medium">{c.score}</span>

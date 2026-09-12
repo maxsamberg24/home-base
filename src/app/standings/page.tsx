@@ -31,39 +31,44 @@ function StandingsNode({
   const entries = group.standings?.entries;
   if (!entries) return null;
 
+  const sorted = [...entries].sort((a, b) => (statValue(b, "wins") ?? 0) - (statValue(a, "wins") ?? 0));
+
   return (
-    <div className="overflow-x-auto rounded-xl border-2 border-hairline">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b-2 border-hairline text-left text-[10px] uppercase text-muted">
-            <th className="px-3 py-2">Team</th>
-            <th className="px-3 py-2 text-right">W</th>
-            <th className="px-3 py-2 text-right">L</th>
-            <th className="px-3 py-2 text-right">PCT</th>
-          </tr>
-        </thead>
-        <tbody>
-          {entries.map((entry) => {
-            const isMine = highlightIds.has(entry.team.id);
-            return (
-              <tr key={entry.team.id} className={`border-b border-hairline last:border-0 ${isMine ? "bg-yellow-soft" : ""}`}>
-                <td className="flex items-center gap-2 px-3 py-2 font-medium">
-                  {entry.team.logo && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={entry.team.logo} alt="" className="h-5 w-5" />
-                  )}
-                  {entry.team.displayName}
-                </td>
-                <td className="px-3 py-2 text-right">{statValue(entry, "wins") ?? "—"}</td>
-                <td className="px-3 py-2 text-right">{statValue(entry, "losses") ?? "—"}</td>
-                <td className="px-3 py-2 text-right">
-                  {entry.stats.find((s) => s.name === "winPercent")?.displayValue ?? "—"}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+    <div>
+      <h4 className="mb-2 font-display text-sm uppercase text-muted">{group.name}</h4>
+      <div className="overflow-x-auto rounded-xl border-2 border-hairline">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b-2 border-hairline text-left text-[10px] uppercase text-muted">
+              <th className="px-3 py-2">Team</th>
+              <th className="px-3 py-2 text-right">W</th>
+              <th className="px-3 py-2 text-right">L</th>
+              <th className="px-3 py-2 text-right">PCT</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((entry) => {
+              const isMine = highlightIds.has(entry.team.id);
+              return (
+                <tr key={entry.team.id} className={`border-b border-hairline last:border-0 ${isMine ? "bg-yellow-soft" : ""}`}>
+                  <td className="flex items-center gap-2 px-3 py-2 font-medium">
+                    {entry.team.logo && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={entry.team.logo} alt="" className="h-5 w-5" />
+                    )}
+                    {entry.team.displayName}
+                  </td>
+                  <td className="px-3 py-2 text-right">{statValue(entry, "wins") ?? "—"}</td>
+                  <td className="px-3 py-2 text-right">{statValue(entry, "losses") ?? "—"}</td>
+                  <td className="px-3 py-2 text-right">
+                    {entry.stats.find((s) => s.name === "winPercent")?.displayValue ?? "—"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

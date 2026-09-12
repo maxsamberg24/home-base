@@ -279,6 +279,40 @@ export async function submitStraightPick(formData: FormData) {
   revalidatePath(`/games/groups/${groupId}/straight`);
 }
 
+export async function setSurvivorBuyIn(formData: FormData) {
+  const userId = await requireUserId();
+  const groupId = String(formData.get("groupId"));
+  const buyIn = Number(formData.get("buyIn"));
+  if (Number.isNaN(buyIn) || buyIn < 0) throw new Error("Enter a valid buy-in amount");
+
+  const [group, membership] = await Promise.all([
+    prisma.group.findUnique({ where: { id: groupId } }),
+    prisma.groupMember.findUnique({ where: { groupId_userId: { groupId, userId } } }),
+  ]);
+  if (!group) throw new Error("Group not found");
+  if (!membership) throw new Error("Not a member of this group");
+  if (group.survivorLocked) throw new Error("The pool is already locked");
+
+  await prisma.group.update({ where: { id: groupId }, data: { survivorBuyIn: buyIn } });
+  revalidatePath(`/games/groups/${groupId}/survivor`);
+}
+
+export async function lockSurvivorPool(formData: FormData) {
+  const userId = await requireUserId();
+  const groupId = String(formData.get("groupId"));
+
+  const [group, membership] = await Promise.all([
+    prisma.group.findUnique({ where: { id: groupId } }),
+    prisma.groupMember.findUnique({ where: { groupId_userId: { groupId, userId } } }),
+  ]);
+  if (!group) throw new Error("Group not found");
+  if (!membership) throw new Error("Not a member of this group");
+  if (group.survivorBuyIn == null) throw new Error("Set a buy-in amount first");
+
+  await prisma.group.update({ where: { id: groupId }, data: { survivorLocked: true } });
+  revalidatePath(`/games/groups/${groupId}/survivor`);
+}
+
 export async function submitSurvivorPick(formData: FormData) {
   const userId = await requireUserId();
   const groupId = String(formData.get("groupId"));
@@ -287,6 +321,15 @@ export async function submitSurvivorPick(formData: FormData) {
   const week = Number(formData.get("week"));
   const seasonType = Number(formData.get("seasonType"));
   const pickedTeamId = String(formData.get("pickedTeamId"));
+
+  const group = await prisma.group.findUnique({ where: { id: groupId } });
+  if (group?.survivorBuyIn != null && !group.survivorLocked) {
+    redirect(
+      `/games/groups/${groupId}/survivor?error=${encodeURIComponent(
+        "This is a pool with a buy-in — lock it in before making picks."
+      )}`
+    );
+  }
 
   const usedAlready = await prisma.survivorPick.findFirst({
     where: {
