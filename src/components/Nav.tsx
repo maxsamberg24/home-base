@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { User } from "@/generated/prisma/client";
 import { signOut } from "@/app/actions";
+import HomePlateIcon from "@/components/HomePlateIcon";
 
 const links = [
   { href: "/", label: "Home" },
@@ -15,8 +16,8 @@ export default function Nav({ user }: { user: User }) {
     <header className="sticky top-0 z-30 border-b-[3px] border-ink bg-paper">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
         <Link href="/" className="flex items-center gap-2 shrink-0">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full border-[3px] border-ink bg-yellow text-sm">
-            🏠
+          <span className="flex h-8 w-8 items-center justify-center rounded-full border-[3px] border-ink bg-yellow">
+            <HomePlateIcon className="h-4 w-4 text-ink" />
           </span>
           <span className="font-display text-lg uppercase tracking-tight hidden sm:inline">
             Home Base

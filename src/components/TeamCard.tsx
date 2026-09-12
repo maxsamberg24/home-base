@@ -1,5 +1,6 @@
 import { divisionForAbbreviation } from "@/lib/divisions";
 import { getLeague } from "@/lib/leagues";
+import { pickCardBackground } from "@/lib/color";
 
 export interface TeamCardData {
   id: string;
@@ -7,7 +8,9 @@ export interface TeamCardData {
   displayName: string;
   shortDisplayName?: string;
   logo?: string;
+  logos?: { href: string }[];
   color?: string;
+  alternateColor?: string;
 }
 
 export default function TeamCard({
@@ -21,7 +24,8 @@ export default function TeamCard({
 }) {
   const leagueDef = getLeague(league);
   const div = leagueDef.hasDivisions ? divisionForAbbreviation(team.abbreviation) : undefined;
-  const bg = team.color ? `#${team.color}` : "#111111";
+  const bg = pickCardBackground(team.color, team.alternateColor);
+  const logoUrl = team.logo ?? team.logos?.[0]?.href;
   const panelHeight = size === "sm" ? "h-24" : "h-32";
 
   return (
@@ -32,11 +36,11 @@ export default function TeamCard({
       </div>
 
       <div className={`relative flex ${panelHeight} items-center justify-center`} style={{ backgroundColor: bg }}>
-        {team.logo && (
+        {logoUrl && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={team.logo} alt="" className="h-16 w-16 object-contain drop-shadow-[0_2px_6px_rgba(0,0,0,0.35)]" />
+          <img src={logoUrl} alt="" className="h-16 w-16 object-contain drop-shadow-[0_2px_6px_rgba(0,0,0,0.35)]" />
         )}
-        <span className="absolute -right-1.5 -top-1.5 flex h-7 w-7 items-center justify-center rounded-full border-2 border-ink bg-yellow text-[10px] font-black text-ink">
+        <span className="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full border-2 border-ink bg-yellow text-[10px] font-black text-ink">
           {team.abbreviation}
         </span>
       </div>

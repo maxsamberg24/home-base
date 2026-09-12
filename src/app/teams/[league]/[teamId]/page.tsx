@@ -13,6 +13,7 @@ import {
 } from "@/lib/espn";
 import { divisionForAbbreviation } from "@/lib/divisions";
 import { followTeam, unfollowTeam, saveTeamNote } from "@/app/actions";
+import { formatGameDate, formatGameTime } from "@/lib/dates";
 
 function GameRow({
   event,
@@ -34,7 +35,11 @@ function GameRow({
   const lost = isFinal && self.winner === false;
 
   return (
-    <div className="flex items-center justify-between rounded-lg border-2 border-hairline px-3 py-2 text-sm">
+    <div
+      className={`flex items-center justify-between rounded-lg border-2 px-3 py-2 text-sm ${
+        isFinal ? (won ? "border-hairline bg-emerald-50" : "border-hairline bg-red-50") : "border-hairline"
+      }`}
+    >
       <div className="flex items-center gap-2">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         {opp.team.logo && <img src={opp.team.logo} alt="" className="h-5 w-5" />}
@@ -59,7 +64,7 @@ function GameRow({
           </>
         ) : (
           <span className="text-muted">
-            {new Date(event.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+            {formatGameDate(event.date)} · {formatGameTime(event.date)}
           </span>
         )}
       </div>
@@ -274,7 +279,7 @@ export default async function TeamProfilePage({
               <div>
                 <div className="text-sm font-medium leading-snug line-clamp-2">{article.headline}</div>
                 <div className="mt-1 text-xs text-muted">
-                  {new Date(article.published).toLocaleDateString()}
+                  {new Date(article.published).toLocaleDateString(undefined, { timeZone: "America/New_York" })}
                 </div>
               </div>
             </a>

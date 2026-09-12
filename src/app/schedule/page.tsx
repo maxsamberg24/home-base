@@ -5,6 +5,7 @@ import { getFollowedTeams } from "@/lib/followedTeams";
 import { getTeamSchedule, type ScheduleEvent } from "@/lib/espn";
 import { getLeague } from "@/lib/leagues";
 import { TEAM_FILTER_COOKIE, teamKey, parseFilterCookie } from "@/lib/teamFilter";
+import { etDateKey, etDateParts, formatGameTime } from "@/lib/dates";
 
 interface EnrichedGame {
   id: string;
@@ -50,11 +51,6 @@ function enrich(league: string, teamId: string, teamAbbr: string, teamLogo: stri
   return out;
 }
 
-function dateKey(iso: string) {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-}
-
 export default async function SchedulePage({
   searchParams,
 }: {
@@ -85,21 +81,22 @@ export default async function SchedulePage({
   const allGames = schedules.flat();
 
   if (view === "calendar") {
-    const monthParam = sp.month ?? new Date().toISOString().slice(0, 7);
+    const monthParam = sp.month ?? etDateKey(new Date()).slice(0, 7);
     const [y, m] = monthParam.split("-").map(Number);
     const firstOfMonth = new Date(y, m - 1, 1);
     const startWeekday = firstOfMonth.getDay();
     const daysInMonth = new Date(y, m, 0).getDate();
     const prevMonth = new Date(y, m - 2, 1).toISOString().slice(0, 7);
     const nextMonth = new Date(y, m, 1).toISOString().slice(0, 7);
+    const today = etDateParts(new Date());
 
     const gamesByDay = new Map<number, EnrichedGame[]>();
     for (const g of allGames) {
-      const d = new Date(g.date);
-      if (d.getFullYear() === y && d.getMonth() === m - 1) {
-        const list = gamesByDay.get(d.getDate()) ?? [];
+      const parts = etDateParts(new Date(g.date));
+      if (parts.year === y && parts.month === m) {
+        const list = gamesByDay.get(parts.day) ?? [];
         list.push(g);
-        gamesByDay.set(d.getDate(), list);
+        gamesByDay.set(parts.day, list);
       }
     }
 
@@ -125,22 +122,41 @@ export default async function SchedulePage({
           ))}
         </div>
         <div className="grid grid-cols-7 gap-1">
-          {cells.map((day, i) => (
-            <div key={i} className="min-h-24 rounded-lg border-2 border-hairline p-1">
-              {day && (
-                <>
-                  <div className="text-xs font-bold text-muted">{day}</div>
-                  <div className="space-y-1">
-                    {(gamesByDay.get(day) ?? []).slice(0, 3).map((g) => (
-                      <div key={g.id + g.teamId} className="truncate rounded bg-yellow-soft px-1 text-[10px] font-medium">
-                        {g.teamAbbr} {g.homeAway === "home" ? "vs" : "@"} {g.opponentAbbr}
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          ))}
+          {cells.map((day, i) => {
+            const cellState =
+              day === null
+                ? null
+                : day === today.day && m === today.month && y === today.year
+                  ? "today"
+                  : y < today.year || (y === today.year && (m < today.month || (m === today.month && day! < today.day)))
+                    ? "past"
+                    : "future";
+            return (
+              <div
+                key={i}
+                className={`min-h-24 rounded-lg border-2 p-1 ${
+                  cellState === "today"
+                    ? "border-ink bg-emerald-100"
+                    : cellState === "past"
+                      ? "border-hairline bg-neutral-100"
+                      : "border-hairline bg-paper"
+                }`}
+              >
+                {day && (
+                  <>
+                    <div className="text-xs font-bold text-muted">{day}</div>
+                    <div className="space-y-1">
+                      {(gamesByDay.get(day) ?? []).slice(0, 3).map((g) => (
+                        <div key={g.id + g.teamId} className="truncate rounded bg-yellow-soft px-1 text-[10px] font-medium">
+                          {g.teamAbbr} {g.homeAway === "home" ? "vs" : "@"} {g.opponentAbbr}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     );
@@ -153,7 +169,7 @@ export default async function SchedulePage({
 
   const groups: { key: string; label: string; games: EnrichedGame[] }[] = [];
   for (const g of filtered) {
-    const key = dateKey(g.date);
+    const key = etDateKey(new Date(g.date));
     let group = groups.find((gr) => gr.key === key);
     if (!group) {
       group = {
@@ -163,6 +179,7 @@ export default async function SchedulePage({
           month: "short",
           day: "numeric",
           year: "numeric",
+          timeZone: "America/New_York",
         }),
         games: [],
       };
@@ -190,7 +207,13 @@ export default async function SchedulePage({
               {group.games.map((g) => (
                 <div
                   key={g.id + g.teamId}
-                  className="flex items-center justify-between rounded-xl border-[3px] border-ink p-3"
+                  className={`flex items-center justify-between rounded-xl border-[3px] p-3 ${
+                    g.state === "post"
+                      ? g.won
+                        ? "border-ink bg-emerald-50"
+                        : "border-ink bg-red-50"
+                      : "border-ink"
+                  }`}
                   style={{ borderLeftWidth: 8, borderLeftColor: g.teamColor ? `#${g.teamColor}` : "#111111" }}
                 >
                   <div className="flex items-center gap-3">
@@ -202,7 +225,10 @@ export default async function SchedulePage({
                       <div className="font-display text-sm uppercase">
                         {g.teamAbbr} {g.homeAway === "home" ? "vs" : "@"} {g.opponentAbbr}
                       </div>
-                      <div className="text-xs text-muted uppercase">{getLeague(g.league).shortName}</div>
+                      <div className="text-xs text-muted uppercase">
+                        {getLeague(g.league).shortName}
+                        {g.state === "pre" && ` · ${formatGameTime(g.date)}`}
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 text-sm">
@@ -246,7 +272,9 @@ function ScheduleHeader({ view, tab }: { view: string; tab: string }) {
         <h1 className="font-display text-3xl uppercase sm:text-4xl">
           <span className="mark-yellow">Schedule</span>
         </h1>
-        <p className="mt-1 text-muted">Use the bar below to filter which teams show up here.</p>
+        <p className="mt-1 text-muted">
+          Times shown in Eastern (ET). Use the bar below to filter which teams show up here.
+        </p>
       </div>
       <div className="flex items-center gap-2">
         <div className="flex rounded-full border-[3px] border-ink p-1 text-xs">

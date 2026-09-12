@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { getCurrentUser } from "@/lib/identity";
 import { getTeams } from "@/lib/espn";
 import { getLeague } from "@/lib/leagues";
 import { getFollowedTeams } from "@/lib/followedTeams";
 import { followTeam, unfollowTeam } from "@/app/actions";
 import { relativeDayLabel, formatGameDate, formatGameTime } from "@/lib/dates";
+import { TEAM_FILTER_COOKIE, teamKey, parseFilterCookie } from "@/lib/teamFilter";
 import TeamCard from "@/components/TeamCard";
 import SportTabs from "@/components/SportTabs";
 import DivisionAccordion from "@/components/DivisionAccordion";
@@ -20,14 +22,18 @@ export default async function Home({
   const { league: activeLeague = "nfl" } = await searchParams;
   const leagueDef = getLeague(activeLeague);
 
-  const [followed, browseTeams] = await Promise.all([
+  const [followed, browseTeams, filterCookie] = await Promise.all([
     getFollowedTeams(user.id),
     getTeams(leagueDef.sportPath).catch(() => []),
+    cookies().then((s) => s.get(TEAM_FILTER_COOKIE)?.value),
   ]);
 
   const followedKeySet = new Set(followed.map((f) => `${f.league}:${f.teamId}`));
+  const allKeys = [...followedKeySet];
+  const selected = parseFilterCookie(filterCookie, allKeys);
+  const visibleFollowed = followed.filter((f) => selected.has(teamKey(f.league, f.teamId)));
 
-  const nextUp = followed
+  const nextUp = visibleFollowed
     .map((f) => ({ ...f, next: f.team.nextEvent?.[0] }))
     .filter((f) => f.next)
     .sort((a, b) => +new Date(a.next!.date) - +new Date(b.next!.date));
@@ -89,11 +95,16 @@ export default async function Home({
         </section>
       )}
 
-      {followed.length > 0 && (
+      {visibleFollowed.length > 0 && (
         <section>
           <h2 className="font-display text-2xl uppercase mb-4">Your teams</h2>
+          {visibleFollowed.length < followed.length && (
+            <p className="mb-3 text-xs text-muted">
+              {followed.length - visibleFollowed.length} more hidden by the filter below.
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
-            {followed.map((f) => (
+            {visibleFollowed.map((f) => (
               <div key={`${f.league}:${f.teamId}`} className="relative">
                 <Link href={`/teams/${f.league}/${f.teamId}`}>
                   <TeamCard team={f.team} league={f.league} size="sm" />

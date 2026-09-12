@@ -11,7 +11,6 @@ import { TEAM_FILTER_COOKIE } from "@/lib/teamFilter";
 
 const inviteAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I
 const nanoid = customAlphabet(inviteAlphabet, 6);
-const friendCodeId = customAlphabet(inviteAlphabet, 7);
 
 async function requireUserId(): Promise<string> {
   const user = await getCurrentUser();
@@ -23,7 +22,7 @@ export async function createIdentity(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   if (!name) throw new Error("Name is required");
 
-  const user = await prisma.user.create({ data: { name, friendCode: friendCodeId() } });
+  const user = await prisma.user.create({ data: { name } });
   const store = await cookies();
   store.set(SESSION_COOKIE, user.id, {
     httpOnly: true,
@@ -120,6 +119,27 @@ export async function setVenmoHandle(formData: FormData) {
   await prisma.user.update({ where: { id: userId }, data: { venmoHandle: venmoHandle || null } });
   revalidatePath("/friends");
   revalidatePath("/games");
+}
+
+export async function setFriendCode(formData: FormData) {
+  const userId = await requireUserId();
+  const existing = await prisma.user.findUnique({ where: { id: userId }, select: { friendCode: true } });
+  if (existing?.friendCode) throw new Error("You've already set your friend code.");
+
+  const code = String(formData.get("friendCode") ?? "")
+    .trim()
+    .toUpperCase();
+  if (!/^[A-Z0-9]{3,12}$/.test(code)) {
+    throw new Error("Use 3-12 letters/numbers, no spaces or symbols.");
+  }
+
+  try {
+    await prisma.user.update({ where: { id: userId }, data: { friendCode: code } });
+  } catch {
+    throw new Error("That code is already taken — try another.");
+  }
+
+  revalidatePath("/friends");
 }
 
 export async function addFriend(formData: FormData) {
