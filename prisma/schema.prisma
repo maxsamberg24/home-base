@@ -27,6 +27,9 @@ model User {
   linePicks         LinePick[]
   straightPicks     StraightPick[]
   survivorPicks     SurvivorPick[]
+  fantasyLineups    FantasyLineup[]
+  gameAttendances   GameAttendance[]
+  groupPosts        GroupPost[]
   friendshipsA      Friendship[]       @relation("FriendA")
   friendshipsB      Friendship[]       @relation("FriendB")
   wagersCreated     Wager[]            @relation("WagerCreator")
@@ -34,17 +37,35 @@ model User {
 }
 
 // A team a user follows. league is our own slug (see src/lib/leagues.ts),
-// teamId is ESPN's team id within that league.
+// teamId is ESPN's team id within that league. fanIntensity is chosen when
+// following (or changed later from the team page): SUPERFAN teams get
+// priority styling on the home feed and calendar, CASUAL ones don't.
 model FavoriteTeam {
-  id      String   @id @default(cuid())
-  userId  String
-  league  String
-  teamId  String
-  addedAt DateTime @default(now())
+  id           String   @id @default(cuid())
+  userId       String
+  league       String
+  teamId       String
+  fanIntensity String   @default("CASUAL") // CASUAL | SUPERFAN
+  addedAt      DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, league, teamId])
+}
+
+// A game a user has flagged themselves as planning to attend, from the
+// "See get-in price" ticket link. Purely a personal/shared calendar marker —
+// no ticketing integration.
+model GameAttendance {
+  id        String   @id @default(cuid())
+  userId    String
+  league    String
+  eventId   String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, league, eventId])
 }
 
 // Free-text notes a user keeps on a team (ticket info, rivalries, who to watch).
@@ -113,10 +134,27 @@ model Group {
   survivorBuyIn   Float?
   survivorLocked  Boolean @default(false)
 
-  members       GroupMember[]
-  linePicks     LinePick[]
-  straightPicks StraightPick[]
-  survivorPicks SurvivorPick[]
+  members        GroupMember[]
+  linePicks      LinePick[]
+  straightPicks  StraightPick[]
+  survivorPicks  SurvivorPick[]
+  fantasyLineups FantasyLineup[]
+  posts          GroupPost[]
+}
+
+// A short text post on a group's board — e.g. "tickets to Rams @ Giants are
+// $50 right now, anyone wanna rip it" — optionally tied to a specific game.
+model GroupPost {
+  id        String   @id @default(cuid())
+  groupId   String
+  userId    String
+  message   String
+  league    String?
+  eventId   String?
+  createdAt DateTime @default(now())
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model GroupMember {
@@ -207,6 +245,26 @@ model SurvivorPick {
   pickedTeamId String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId, season, week])
+}
+
+// Weekly best-lineup fantasy game, scoped to a group: 1 QB, 2 RB, 2 WR, 1 TE,
+// 1 K, 1 DEF, resets every week. `roster` is a JSON map of slot name ->
+// { id, name, teamId, teamAbbr } (id/teamId are ESPN athlete/team ids; DEF's
+// "id" is just its own teamId, since it's a team unit not a player).
+model FantasyLineup {
+  id         String   @id @default(cuid())
+  groupId    String
+  userId     String
+  season     Int
+  week       Int
+  seasonType Int      @default(2)
+  roster     String
+  updatedAt  DateTime @updatedAt
 
   group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)

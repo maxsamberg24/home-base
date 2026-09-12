@@ -1,5 +1,5 @@
 import { createIdentity } from "@/app/actions";
-import BallInHandIcon from "@/components/BallInHandIcon";
+import LockerBenchIcon from "@/components/LockerBenchIcon";
 
 export default function NameGate() {
   return (
@@ -7,7 +7,7 @@ export default function NameGate() {
       <div className="w-full max-w-sm rounded-2xl border-[3px] border-ink bg-paper p-8 shadow-[6px_6px_0_0_#111111]">
         <div className="mb-6 text-center">
           <span className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full border-[3px] border-ink bg-yellow">
-            <BallInHandIcon className="h-8 w-8 text-ink" />
+            <LockerBenchIcon className="h-8 w-8 text-ink" />
           </span>
           <h1 className="font-display text-xl uppercase">Welcome to The Locker Room</h1>
           <p className="mt-2 text-sm text-muted">

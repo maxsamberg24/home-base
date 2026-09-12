@@ -8,6 +8,12 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser, SESSION_COOKIE } from "@/lib/identity";
 import { getFriendIds } from "@/lib/friends";
 import { TEAM_FILTER_COOKIE } from "@/lib/teamFilter";
+import { getScoreboard } from "@/lib/espn";
+import { getLeague } from "@/lib/leagues";
+import { weekDeadline } from "@/lib/dates";
+import { FANTASY_SLOTS, type FantasyRoster } from "@/lib/fantasy";
+
+const NFL_PATH = getLeague("nfl").sportPath;
 
 const inviteAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I
 const nanoid = customAlphabet(inviteAlphabet, 6);
@@ -57,14 +63,30 @@ export async function followTeam(formData: FormData) {
   const league = String(formData.get("league") ?? "");
   const teamId = String(formData.get("teamId") ?? "");
   if (!league || !teamId) throw new Error("league and teamId are required");
+  const fanIntensity = String(formData.get("fanIntensity") ?? "CASUAL") === "SUPERFAN" ? "SUPERFAN" : "CASUAL";
 
   await prisma.favoriteTeam.upsert({
     where: { userId_league_teamId: { userId, league, teamId } },
-    create: { userId, league, teamId },
+    create: { userId, league, teamId, fanIntensity },
     update: {},
   });
 
   revalidatePath("/", "layout");
+}
+
+export async function setFanIntensity(formData: FormData) {
+  const userId = await requireUserId();
+  const league = String(formData.get("league") ?? "");
+  const teamId = String(formData.get("teamId") ?? "");
+  const fanIntensity = String(formData.get("fanIntensity") ?? "") === "SUPERFAN" ? "SUPERFAN" : "CASUAL";
+
+  await prisma.favoriteTeam.update({
+    where: { userId_league_teamId: { userId, league, teamId } },
+    data: { fanIntensity },
+  });
+
+  revalidatePath("/", "layout");
+  revalidatePath(`/teams/${league}/${teamId}`);
 }
 
 export async function unfollowTeam(formData: FormData) {
@@ -258,6 +280,14 @@ export async function submitLinePick(formData: FormData) {
   const guessedSpread = Number(formData.get("guessedSpread"));
 
   if (Number.isNaN(guessedSpread)) throw new Error("Enter a numeric spread guess");
+
+  // Honor-system rule: the whole week's guesses are due Tuesday night ET,
+  // before the actual lines are locked in — not at each game's own kickoff.
+  const board = await getScoreboard(NFL_PATH, { season, seasonType, week });
+  const deadline = weekDeadline(board.events, 0, 23, 59, 59);
+  if (deadline && Date.now() > deadline.getTime()) {
+    throw new Error("Picks for this week are closed — guesses were due Tuesday night ET.");
+  }
 
   await prisma.linePick.upsert({
     where: { groupId_userId_eventId: { groupId, userId, eventId } },
@@ -472,4 +502,78 @@ export async function settleWager(formData: FormData) {
 
   await prisma.wager.update({ where: { id: wagerId }, data: { status: "SETTLED", result } });
   revalidatePath("/games");
+}
+
+// --- Fantasy lineup game ---
+
+export async function submitFantasyLineup(formData: FormData) {
+  const userId = await requireUserId();
+  const groupId = String(formData.get("groupId"));
+  const season = Number(formData.get("season"));
+  const week = Number(formData.get("week"));
+  const seasonType = Number(formData.get("seasonType"));
+
+  const membership = await prisma.groupMember.findUnique({ where: { groupId_userId: { groupId, userId } } });
+  if (!membership) throw new Error("Not a member of this group");
+
+  const board = await getScoreboard(NFL_PATH, { season, seasonType, week });
+  const deadline = weekDeadline(board.events, 5, 13, 0, 0);
+  if (deadline && Date.now() > deadline.getTime()) {
+    throw new Error("Lineups for this week are locked — they were due Sunday at 1pm ET.");
+  }
+
+  const roster: FantasyRoster = {};
+  for (const slot of FANTASY_SLOTS) {
+    const raw = String(formData.get(slot) ?? "");
+    if (!raw) throw new Error(`Fill every slot — missing ${slot}`);
+    const [id, name, teamId, teamAbbr] = raw.split("|");
+    if (!id || !teamId) throw new Error(`Invalid selection for ${slot}`);
+    roster[slot] = { id, name, teamId, teamAbbr };
+  }
+
+  await prisma.fantasyLineup.upsert({
+    where: { groupId_userId_season_week: { groupId, userId, season, week } },
+    create: { groupId, userId, season, week, seasonType, roster: JSON.stringify(roster) },
+    update: { roster: JSON.stringify(roster) },
+  });
+
+  revalidatePath(`/games/groups/${groupId}/fantasy`);
+}
+
+// --- Ticket price / "going" flag ---
+
+export async function toggleGoing(formData: FormData) {
+  const userId = await requireUserId();
+  const league = String(formData.get("league") ?? "");
+  const eventId = String(formData.get("eventId") ?? "");
+  if (!league || !eventId) throw new Error("league and eventId are required");
+
+  const existing = await prisma.gameAttendance.findUnique({
+    where: { userId_league_eventId: { userId, league, eventId } },
+  });
+  if (existing) {
+    await prisma.gameAttendance.delete({ where: { id: existing.id } });
+  } else {
+    await prisma.gameAttendance.create({ data: { userId, league, eventId } });
+  }
+
+  revalidatePath("/", "layout");
+  revalidatePath("/schedule");
+}
+
+// --- Group message board ---
+
+export async function postToGroup(formData: FormData) {
+  const userId = await requireUserId();
+  const groupId = String(formData.get("groupId"));
+  const message = String(formData.get("message") ?? "").trim();
+  const league = String(formData.get("league") ?? "").trim() || null;
+  const eventId = String(formData.get("eventId") ?? "").trim() || null;
+  if (!message) throw new Error("Message can't be empty");
+
+  const membership = await prisma.groupMember.findUnique({ where: { groupId_userId: { groupId, userId } } });
+  if (!membership) throw new Error("Not a member of this group");
+
+  await prisma.groupPost.create({ data: { groupId, userId, message, league, eventId } });
+  revalidatePath(`/games/groups/${groupId}`);
 }

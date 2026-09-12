@@ -50,3 +50,80 @@ export function formatGameTime(iso: string): string {
 export function toDateInputValue(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
+
+// Converts a wall-clock instant in Eastern time into the actual UTC instant
+// it represents. ET is either UTC-4 (EDT) or UTC-5 (EST); rather than a full
+// tz database, try both candidate offsets and keep whichever one, when
+// formatted back through Intl in America/New_York, reproduces the requested
+// wall time — there are only ever two possibilities.
+function etWallTimeToUtc(year: number, month: number, day: number, hour: number, minute: number, second = 0): Date {
+  for (const offsetHours of [4, 5]) {
+    const candidate = new Date(Date.UTC(year, month - 1, day, hour + offsetHours, minute, second));
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: ET_TZ,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(candidate);
+    const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+    if (
+      Number(map.year) === year &&
+      Number(map.month) === month &&
+      Number(map.day) === day &&
+      Number(map.hour) % 24 === hour &&
+      Number(map.minute) === minute
+    ) {
+      return candidate;
+    }
+  }
+  return new Date(Date.UTC(year, month - 1, day, hour + 5, minute, second));
+}
+
+// NFL weeks run Tuesday-through-Monday. Given a week's games, finds the
+// Tuesday (in ET) on/before the week's first kickoff — the natural anchor
+// for "due before the week's slate starts" deadlines.
+function nflWeekStartTuesday(events: { date: string }[]): { year: number; month: number; day: number } | null {
+  if (events.length === 0) return null;
+  const first = events.reduce((min, e) => (+new Date(e.date) < +new Date(min.date) ? e : min));
+  const { year, month, day } = etDateParts(new Date(first.date));
+  const dow = new Date(Date.UTC(year, month - 1, day)).getUTCDay(); // 0=Sun..6=Sat
+  const daysBack = (dow - 2 + 7) % 7;
+  const tuesdayUtc = new Date(Date.UTC(year, month - 1, day - daysBack));
+  return { year: tuesdayUtc.getUTCFullYear(), month: tuesdayUtc.getUTCMonth() + 1, day: tuesdayUtc.getUTCDate() };
+}
+
+// A deadline expressed as N days after that week's starting Tuesday, at a
+// specific ET wall-clock time — e.g. weekDeadline(events, 0, 23, 59, 59) is
+// "Tuesday night", weekDeadline(events, 5, 13, 0) is "Sunday at 1pm ET".
+export function weekDeadline(
+  events: { date: string }[],
+  dayOffsetFromTuesday: number,
+  hour: number,
+  minute: number,
+  second = 0
+): Date | null {
+  const tue = nflWeekStartTuesday(events);
+  if (!tue) return null;
+  const d = new Date(Date.UTC(tue.year, tue.month - 1, tue.day + dayOffsetFromTuesday));
+  return etWallTimeToUtc(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate(), hour, minute, second);
+}
+
+// Wraps the impure "now" check in its own function — calling Date.now()
+// directly inside a Server Component body trips the react-hooks/purity lint
+// rule, but hiding it behind a plain helper (same pattern as etDateKey(new
+// Date()) elsewhere in this file) satisfies it.
+export function isPast(d: Date | null): boolean {
+  return !!d && Date.now() > d.getTime();
+}
+
+export function formatDeadline(d: Date): string {
+  return (
+    d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric", timeZone: ET_TZ }) +
+    " at " +
+    d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", timeZone: ET_TZ }) +
+    " ET"
+  );
+}

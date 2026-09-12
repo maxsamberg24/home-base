@@ -40,6 +40,12 @@ const GROUP_MODES = [
     title: "Survivor pool",
     body: "Pick one winner each week. Lose and you're out. Can't reuse a team all season.",
   },
+  {
+    href: "fantasy",
+    emoji: "🏈",
+    title: "Fantasy lineup",
+    body: "Build the best QB/RB/RB/WR/WR/TE/K/DEF lineup for the week. Standard PPR, resets weekly.",
+  },
 ];
 
 export default async function GamesPage() {
@@ -375,7 +381,7 @@ export default async function GamesPage() {
                     </div>
                   </div>
                 </div>
-                <div className="mt-3 grid grid-cols-3 gap-2">
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {GROUP_MODES.map((mode) => (
                     <Link
                       key={mode.href}

@@ -62,6 +62,15 @@ export const LEAGUES: LeagueDef[] = [
     espnBoxscoreSlug: "mens-college-basketball",
   },
   {
+    slug: "nhl",
+    sportPath: "hockey/nhl",
+    name: "NHL",
+    shortName: "NHL",
+    hasDivisions: false,
+    hasDepthChart: false,
+    espnBoxscoreSlug: "nhl",
+  },
+  {
     slug: "soccer.eng.1",
     sportPath: "soccer/eng.1",
     name: "Premier League",

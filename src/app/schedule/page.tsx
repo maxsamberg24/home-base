@@ -2,11 +2,14 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { getCurrentUser } from "@/lib/identity";
 import { getFollowedTeams } from "@/lib/followedTeams";
+import { getGoingKeys } from "@/lib/attendance";
+import { prisma } from "@/lib/prisma";
 import { getTeamSchedule, type ScheduleEvent } from "@/lib/espn";
 import { getLeague } from "@/lib/leagues";
 import { TEAM_FILTER_COOKIE, teamKey, parseFilterCookie } from "@/lib/teamFilter";
 import { etDateKey, etDateParts, formatGameTime } from "@/lib/dates";
 import TeamLogoBadge from "@/components/TeamLogoBadge";
+import TicketActions from "@/components/TicketActions";
 
 interface EnrichedGame {
   id: string;
@@ -14,9 +17,12 @@ interface EnrichedGame {
   league: string;
   teamId: string;
   teamAbbr: string;
+  teamName: string;
   teamLogo?: string;
   teamColor?: string;
+  fanIntensity: "CASUAL" | "SUPERFAN";
   opponentAbbr: string;
+  opponentName: string;
   opponentLogo?: string;
   homeAway: "home" | "away";
   state: "pre" | "in" | "post";
@@ -26,7 +32,16 @@ interface EnrichedGame {
   oppWon?: boolean;
 }
 
-function enrich(league: string, teamId: string, teamAbbr: string, teamLogo: string | undefined, teamColor: string | undefined, events: ScheduleEvent[]): EnrichedGame[] {
+function enrich(
+  league: string,
+  teamId: string,
+  teamAbbr: string,
+  teamName: string,
+  teamLogo: string | undefined,
+  teamColor: string | undefined,
+  fanIntensity: "CASUAL" | "SUPERFAN",
+  events: ScheduleEvent[]
+): EnrichedGame[] {
   const out: EnrichedGame[] = [];
   for (const event of events) {
     const comp = event.competitions[0];
@@ -39,9 +54,12 @@ function enrich(league: string, teamId: string, teamAbbr: string, teamLogo: stri
       league,
       teamId,
       teamAbbr,
+      teamName,
       teamLogo,
       teamColor,
+      fanIntensity,
       opponentAbbr: opp.team.abbreviation,
+      opponentName: opp.team.shortDisplayName ?? opp.team.name ?? opp.team.abbreviation,
       opponentLogo: opp.team.logo,
       homeAway: self.homeAway,
       state: comp.status.type.state,
@@ -66,10 +84,13 @@ export default async function SchedulePage({
   const view = sp.view === "calendar" ? "calendar" : "list";
   const tab = sp.tab === "results" ? "results" : "upcoming";
 
-  const [followed, filterCookie] = await Promise.all([
+  const [followed, filterCookie, goingKeys, groupMemberships] = await Promise.all([
     getFollowedTeams(user.id),
     cookies().then((s) => s.get(TEAM_FILTER_COOKIE)?.value),
+    getGoingKeys(user.id),
+    prisma.groupMember.findMany({ where: { userId: user.id }, include: { group: true } }),
   ]);
+  const myGroups = groupMemberships.map((m) => ({ id: m.group.id, name: m.group.name }));
   const allKeys = followed.map((f) => teamKey(f.league, f.teamId));
   const selected = parseFilterCookie(filterCookie, allKeys);
   const visibleTeams = followed.filter((f) => selected.has(teamKey(f.league, f.teamId)));
@@ -78,7 +99,16 @@ export default async function SchedulePage({
     visibleTeams.map(async (f) => {
       const league = getLeague(f.league);
       const events = await getTeamSchedule(league.sportPath, f.teamId).catch(() => []);
-      return enrich(f.league, f.teamId, f.team.abbreviation, f.team.logos?.[0]?.href, f.team.color, events);
+      return enrich(
+        f.league,
+        f.teamId,
+        f.team.abbreviation,
+        f.team.shortDisplayName ?? f.team.displayName,
+        f.team.logos?.[0]?.href,
+        f.team.color,
+        f.fanIntensity,
+        events
+      );
     })
   );
   const allGames = schedules.flat();
@@ -134,23 +164,31 @@ export default async function SchedulePage({
                   : y < today.year || (y === today.year && (m < today.month || (m === today.month && day! < today.day)))
                     ? "past"
                     : "future";
+            const dayGames = day ? (gamesByDay.get(day) ?? []) : [];
+            const goingToday = dayGames.some((g) => goingKeys.has(`${g.league}:${g.id}`));
+            const bgClass =
+              cellState === "today" ? "bg-emerald-100" : cellState === "past" ? "bg-neutral-100" : "bg-paper";
+            const borderClass = goingToday
+              ? "border-[3px] border-yellow"
+              : cellState === "today"
+                ? "border-2 border-ink"
+                : "border-2 border-hairline";
             return (
-              <div
-                key={i}
-                className={`min-h-24 rounded-lg border-2 p-1 ${
-                  cellState === "today"
-                    ? "border-ink bg-emerald-100"
-                    : cellState === "past"
-                      ? "border-hairline bg-neutral-100"
-                      : "border-hairline bg-paper"
-                }`}
-              >
+              <div key={i} className={`min-h-24 rounded-lg p-1 ${borderClass} ${bgClass}`}>
                 {day && (
                   <>
-                    <div className="text-xs font-bold text-muted">{day}</div>
+                    <div className="flex items-center justify-between text-xs font-bold text-muted">
+                      <span>{day}</span>
+                      {goingToday && <span title="You're going">🎟️</span>}
+                    </div>
                     <div className="space-y-1">
-                      {(gamesByDay.get(day) ?? []).slice(0, 3).map((g) => (
-                        <div key={g.id + g.teamId} className="truncate rounded bg-yellow-soft px-1 text-[10px] font-medium">
+                      {dayGames.slice(0, 3).map((g) => (
+                        <div
+                          key={g.id + g.teamId}
+                          className={`truncate rounded px-1 text-[10px] font-medium ${
+                            g.fanIntensity === "SUPERFAN" ? "bg-yellow font-bold" : "bg-neutral-100"
+                          }`}
+                        >
                           {g.teamAbbr} {g.homeAway === "home" ? "vs" : "@"} {g.opponentAbbr}
                         </div>
                       ))}
@@ -209,56 +247,74 @@ export default async function SchedulePage({
             <div className="space-y-2">
               {group.games.map((g) => {
                 const isDraw = g.state === "post" && !g.won && !g.oppWon;
+                const goingThis = goingKeys.has(`${g.league}:${g.id}`);
                 return (
                 <div
                   key={g.id + g.teamId}
-                  className={`flex items-center justify-between rounded-xl border-[3px] p-3 ${
+                  className={`rounded-xl border-[3px] p-3 ${
                     g.state === "post"
                       ? isDraw
                         ? "border-ink bg-neutral-100"
                         : g.won
                           ? "border-ink bg-emerald-50"
                           : "border-ink bg-red-50"
-                      : "border-ink"
+                      : goingThis
+                        ? "border-yellow"
+                        : "border-ink"
                   }`}
                   style={{ borderLeftWidth: 8, borderLeftColor: g.teamColor ? `#${g.teamColor}` : "#111111" }}
                 >
-                  <div className="flex items-center gap-3">
-                    <TeamLogoBadge src={g.teamLogo} size={28} />
-                    <div>
-                      <div className="font-display text-sm uppercase">
-                        {g.teamAbbr} {g.homeAway === "home" ? "vs" : "@"} {g.opponentAbbr}
-                      </div>
-                      <div className="text-xs text-muted uppercase">
-                        {getLeague(g.league).shortName}
-                        {g.state === "pre" && ` · ${formatGameTime(g.date)}`}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <TeamLogoBadge src={g.teamLogo} size={28} />
+                      <div>
+                        <div className="font-display text-sm uppercase">
+                          {g.teamAbbr} {g.homeAway === "home" ? "vs" : "@"} {g.opponentAbbr}
+                          {g.fanIntensity === "SUPERFAN" && <span className="ml-1" title="Superfan">⭐</span>}
+                        </div>
+                        <div className="text-xs text-muted uppercase">
+                          {getLeague(g.league).shortName}
+                          {g.state === "pre" && ` · ${formatGameTime(g.date)}`}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3 text-sm">
-                    {g.state === "post" ? (
-                      <>
-                        <span className="font-bold">
-                          {isDraw ? "D" : g.won ? "W" : "L"} {g.selfScore}-{g.oppScore}
-                        </span>
-                        <a
-                          href={`https://www.espn.com/${getLeague(g.league).espnBoxscoreSlug}/boxscore/_/gameId/${g.id}`}
-                          target="_blank"
-                          rel="noreferrer"
+                    <div className="flex items-center gap-3 text-sm">
+                      {g.state === "post" ? (
+                        <>
+                          <span className="font-bold">
+                            {isDraw ? "D" : g.won ? "W" : "L"} {g.selfScore}-{g.oppScore}
+                          </span>
+                          <a
+                            href={`https://www.espn.com/${getLeague(g.league).espnBoxscoreSlug}/boxscore/_/gameId/${g.id}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-display text-xs uppercase text-ink underline decoration-yellow decoration-4 underline-offset-4"
+                          >
+                            Box score →
+                          </a>
+                        </>
+                      ) : (
+                        <Link
+                          href={`/teams/${g.league}/${g.teamId}`}
                           className="font-display text-xs uppercase text-ink underline decoration-yellow decoration-4 underline-offset-4"
                         >
-                          Box score →
-                        </a>
-                      </>
-                    ) : (
-                      <Link
-                        href={`/teams/${g.league}/${g.teamId}`}
-                        className="font-display text-xs uppercase text-ink underline decoration-yellow decoration-4 underline-offset-4"
-                      >
-                        Preview →
-                      </Link>
-                    )}
+                          Preview →
+                        </Link>
+                      )}
+                    </div>
                   </div>
+                  {g.state === "pre" && (
+                    <div className="mt-2 border-t-2 border-dashed border-hairline pt-2">
+                      <TicketActions
+                        league={g.league}
+                        eventId={g.id}
+                        awayName={g.homeAway === "away" ? g.teamName : g.opponentName}
+                        homeName={g.homeAway === "home" ? g.teamName : g.opponentName}
+                        isGoing={goingThis}
+                        groups={myGroups}
+                      />
+                    </div>
+                  )}
                 </div>
                 );
               })}

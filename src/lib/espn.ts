@@ -308,12 +308,18 @@ export interface ScheduleEvent {
   }[];
 }
 
+// No `season` param by default, same reasoning as getStandings: NBA/NCAAMB
+// label a season by the year it *ends*, so hardcoding "this calendar year"
+// silently returned last season's already-finished schedule instead of the
+// upcoming one for those sports (confirmed by curling ESPN directly —
+// season=2026 returned the completed 2025-26 Lakers schedule while omitting
+// it correctly resolved to the upcoming 2026-27 slate).
 export async function getTeamSchedule(
   sportPath: string,
   teamId: string,
-  season = new Date().getFullYear()
+  season?: number
 ): Promise<ScheduleEvent[]> {
-  const url = `${SITE_ROOT}/${sportPath}/teams/${teamId}/schedule?season=${season}`;
+  const url = `${SITE_ROOT}/${sportPath}/teams/${teamId}/schedule${season ? `?season=${season}` : ""}`;
   const data = await cachedFetch<{ events: ScheduleEvent[] }>(url, 2 * MIN);
   return data.events ?? [];
 }
@@ -344,4 +350,123 @@ export async function getScoreboardByDate(
   const compact = date.replaceAll("-", "");
   const url = `${SITE_ROOT}/${sportPath}/scoreboard?dates=${compact}`;
   return cachedFetch<ScoreboardResponse>(url, 1 * MIN);
+}
+
+// --- Fantasy lineup game (NFL-only) ---
+
+export interface FantasyPlayerOption {
+  id: string;
+  name: string;
+  position: "QB" | "RB" | "WR" | "TE" | "K";
+  teamId: string;
+  teamAbbr: string;
+}
+
+// ESPN's NFL roster groups athletes broadly (offense/defense/specialTeam);
+// each athlete carries its own specific position abbreviation. Kickers show
+// up as "PK" there, normalized to "K" for the fantasy slot.
+const FANTASY_POSITION_MAP: Record<string, FantasyPlayerOption["position"]> = {
+  QB: "QB",
+  RB: "RB",
+  WR: "WR",
+  TE: "TE",
+  PK: "K",
+};
+
+// Fetches every NFL team's roster in parallel and flattens to the players
+// that fill a standard fantasy slot, grouped by position. Rosters are
+// individually cached (15 min) by the underlying fetch.
+export async function getAllNflPlayersByPosition(
+  sportPath: string
+): Promise<Record<FantasyPlayerOption["position"], FantasyPlayerOption[]>> {
+  const teams = await getTeams(sportPath);
+  const out: Record<FantasyPlayerOption["position"], FantasyPlayerOption[]> = {
+    QB: [],
+    RB: [],
+    WR: [],
+    TE: [],
+    K: [],
+  };
+
+  await Promise.all(
+    teams.map(async (team) => {
+      const url = `${SITE_ROOT}/${sportPath}/teams/${team.id}/roster`;
+      const data = await cachedFetch<{
+        athletes: { position: string; items: EspnRosterAthlete[] }[];
+      }>(url, 15 * MIN).catch(() => ({ athletes: [] }));
+
+      for (const group of data.athletes ?? []) {
+        if (group.position !== "offense" && group.position !== "specialTeam") continue;
+        for (const athlete of group.items) {
+          const fantasyPos = athlete.position?.abbreviation
+            ? FANTASY_POSITION_MAP[athlete.position.abbreviation]
+            : undefined;
+          if (!fantasyPos) continue;
+          out[fantasyPos].push({
+            id: athlete.id,
+            name: athlete.displayName,
+            position: fantasyPos,
+            teamId: team.id,
+            teamAbbr: team.abbreviation,
+          });
+        }
+      }
+    })
+  );
+
+  for (const pos of Object.keys(out) as FantasyPlayerOption["position"][]) {
+    out[pos].sort((a, b) => a.name.localeCompare(b.name));
+  }
+  return out;
+}
+
+export interface BoxscoreAthleteStats {
+  athleteId: string;
+  name: string;
+  stats: string[];
+}
+
+export interface BoxscoreCategory {
+  name: string;
+  labels: string[];
+  athletes: BoxscoreAthleteStats[];
+}
+
+export interface BoxscoreTeamStats {
+  teamId: string;
+  categories: BoxscoreCategory[];
+}
+
+// Per-game player boxscore stats (passing/rushing/receiving/kicking/defense),
+// used to grade the fantasy lineup game once a player's team has played.
+export async function getBoxscore(
+  sportPath: string,
+  eventId: string
+): Promise<BoxscoreTeamStats[] | null> {
+  const url = `${SITE_ROOT}/${sportPath}/summary?event=${eventId}`;
+  try {
+    const data = await cachedFetch<{
+      boxscore?: {
+        players?: {
+          team: { id: string };
+          statistics: { name: string; labels: string[]; athletes: { athlete: { id: string; displayName: string }; stats: string[] }[] }[];
+        }[];
+      };
+    }>(url, 2 * MIN);
+    const players = data.boxscore?.players ?? [];
+    return players.map((p) => ({
+      teamId: p.team.id,
+      categories: p.statistics.map((cat) => ({
+        name: cat.name,
+        labels: cat.labels,
+        athletes: cat.athletes.map((a) => ({
+          athleteId: a.athlete.id,
+          name: a.athlete.displayName,
+          stats: a.stats,
+        })),
+      })),
+    }));
+  } catch {
+    return null;
+  }
 }

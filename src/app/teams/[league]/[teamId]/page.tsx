@@ -12,19 +12,27 @@ import {
   type ScheduleEvent,
 } from "@/lib/espn";
 import { divisionForAbbreviation } from "@/lib/divisions";
-import { followTeam, unfollowTeam, saveTeamNote } from "@/app/actions";
+import { followTeam, unfollowTeam, saveTeamNote, setFanIntensity } from "@/app/actions";
 import { formatGameDate, formatGameTime } from "@/lib/dates";
 import { pickCardBackground } from "@/lib/color";
+import { getGoingKeys } from "@/lib/attendance";
 import TeamLogoBadge from "@/components/TeamLogoBadge";
+import TicketActions from "@/components/TicketActions";
 
 function GameRow({
   event,
   teamId,
   boxscoreSlug,
+  league,
+  isGoing,
+  groups,
 }: {
   event: ScheduleEvent;
   teamId: string;
   boxscoreSlug: string;
+  league: string;
+  isGoing: boolean;
+  groups: { id: string; name: string }[];
 }) {
   const comp = event.competitions[0];
   const self = comp.competitors.find((c) => c.team.id === teamId);
@@ -36,10 +44,12 @@ function GameRow({
   const won = self.winner === true;
   const lost = isFinal && self.winner === false && opp.winner === true;
   const draw = isFinal && !won && !lost;
+  const home = comp.competitors.find((c) => c.homeAway === "home");
+  const away = comp.competitors.find((c) => c.homeAway === "away");
 
   return (
     <div
-      className={`flex items-center justify-between rounded-lg border-2 px-3 py-2 text-sm ${
+      className={`rounded-lg border-2 px-3 py-2 text-sm ${
         isFinal
           ? draw
             ? "border-hairline bg-neutral-100"
@@ -49,33 +59,47 @@ function GameRow({
           : "border-hairline"
       }`}
     >
-      <div className="flex items-center gap-2">
-        <TeamLogoBadge src={opp.team.logo} size={20} />
-        <span>
-          {self.homeAway === "home" ? "vs" : "@"} {opp.team.shortDisplayName ?? opp.team.name}
-        </span>
-      </div>
-      <div className="flex items-center gap-2">
-        {isFinal ? (
-          <>
-            <span className={won ? "font-bold" : lost ? "font-bold text-muted" : "font-bold"}>
-              {won ? "W" : lost ? "L" : "D"} {selfScore}-{oppScore}
-            </span>
-            <a
-              href={`https://www.espn.com/${boxscoreSlug}/boxscore/_/gameId/${event.id}`}
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs text-muted underline"
-            >
-              box score
-            </a>
-          </>
-        ) : (
-          <span className="text-muted">
-            {formatGameDate(event.date)} · {formatGameTime(event.date)}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <TeamLogoBadge src={opp.team.logo} size={20} />
+          <span>
+            {self.homeAway === "home" ? "vs" : "@"} {opp.team.shortDisplayName ?? opp.team.name}
           </span>
-        )}
+        </div>
+        <div className="flex items-center gap-2">
+          {isFinal ? (
+            <>
+              <span className={won ? "font-bold" : lost ? "font-bold text-muted" : "font-bold"}>
+                {won ? "W" : lost ? "L" : "D"} {selfScore}-{oppScore}
+              </span>
+              <a
+                href={`https://www.espn.com/${boxscoreSlug}/boxscore/_/gameId/${event.id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-muted underline"
+              >
+                box score
+              </a>
+            </>
+          ) : (
+            <span className="text-muted">
+              {formatGameDate(event.date)} · {formatGameTime(event.date)}
+            </span>
+          )}
+        </div>
       </div>
+      {!isFinal && home && away && (
+        <div className="mt-2 border-t border-dashed border-hairline pt-2">
+          <TicketActions
+            league={league}
+            eventId={event.id}
+            awayName={away.team.shortDisplayName ?? away.team.name ?? "Away"}
+            homeName={home.team.shortDisplayName ?? home.team.name ?? "Home"}
+            isGoing={isGoing}
+            groups={groups}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -96,7 +120,7 @@ export default async function TeamProfilePage({
   const user = await getCurrentUser();
   if (!user) return null;
 
-  const [team, news, schedule, roster, depthChart, favorite, note, friendIds] = await Promise.all([
+  const [team, news, schedule, roster, depthChart, favorite, note, friendIds, goingKeys, memberships] = await Promise.all([
     getTeam(leagueDef.sportPath, teamId).catch(() => null),
     getTeamNews(leagueDef.sportPath, teamId, 6).catch(() => []),
     getTeamSchedule(leagueDef.sportPath, teamId).catch(() => []),
@@ -109,7 +133,10 @@ export default async function TeamProfilePage({
       where: { userId_league_teamId: { userId: user.id, league, teamId } },
     }),
     getFriendIds(user.id),
+    getGoingKeys(user.id),
+    prisma.groupMember.findMany({ where: { userId: user.id }, include: { group: true } }),
   ]);
+  const myGroups = memberships.map((m) => ({ id: m.group.id, name: m.group.name }));
 
   if (!team) notFound();
 
@@ -155,20 +182,48 @@ export default async function TeamProfilePage({
             {record?.summary && <p className="mt-1 opacity-90">{record.summary}</p>}
           </div>
         </div>
-        <div className="flex items-center justify-between border-t-[3px] border-ink bg-paper px-4 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t-[3px] border-ink bg-paper px-4 py-2">
           <span className="text-xs text-muted">{team.abbreviation}</span>
-          <form action={isFollowing ? unfollowTeam : followTeam}>
-            <input type="hidden" name="league" value={league} />
-            <input type="hidden" name="teamId" value={teamId} />
-            <button
-              type="submit"
-              className={`font-display text-xs uppercase underline decoration-4 underline-offset-4 ${
-                isFollowing ? "decoration-hairline" : "decoration-yellow"
-              }`}
-            >
-              {isFollowing ? "Unfollow" : "Follow this team"}
-            </button>
-          </form>
+          <div className="flex items-center gap-3">
+            {isFollowing && (
+              <div className="flex overflow-hidden rounded-full border-2 border-ink text-[10px] font-bold uppercase">
+                <form action={setFanIntensity}>
+                  <input type="hidden" name="league" value={league} />
+                  <input type="hidden" name="teamId" value={teamId} />
+                  <input type="hidden" name="fanIntensity" value="CASUAL" />
+                  <button
+                    type="submit"
+                    className={`px-2 py-1 ${favorite?.fanIntensity !== "SUPERFAN" ? "bg-yellow" : "hover:bg-yellow-soft"}`}
+                  >
+                    Casual
+                  </button>
+                </form>
+                <form action={setFanIntensity}>
+                  <input type="hidden" name="league" value={league} />
+                  <input type="hidden" name="teamId" value={teamId} />
+                  <input type="hidden" name="fanIntensity" value="SUPERFAN" />
+                  <button
+                    type="submit"
+                    className={`border-l-2 border-ink px-2 py-1 ${favorite?.fanIntensity === "SUPERFAN" ? "bg-yellow" : "hover:bg-yellow-soft"}`}
+                  >
+                    ⭐ Superfan
+                  </button>
+                </form>
+              </div>
+            )}
+            <form action={isFollowing ? unfollowTeam : followTeam}>
+              <input type="hidden" name="league" value={league} />
+              <input type="hidden" name="teamId" value={teamId} />
+              <button
+                type="submit"
+                className={`font-display text-xs uppercase underline decoration-4 underline-offset-4 ${
+                  isFollowing ? "decoration-hairline" : "decoration-yellow"
+                }`}
+              >
+                {isFollowing ? "Unfollow" : "Follow this team"}
+              </button>
+            </form>
+          </div>
         </div>
       </div>
 
@@ -178,7 +233,15 @@ export default async function TeamProfilePage({
           {upcoming.length === 0 && <p className="text-sm text-muted">No upcoming games scheduled yet.</p>}
           <div className="space-y-2">
             {upcoming.map((e) => (
-              <GameRow key={e.id} event={e} teamId={teamId} boxscoreSlug={leagueDef.espnBoxscoreSlug} />
+              <GameRow
+                key={e.id}
+                event={e}
+                teamId={teamId}
+                boxscoreSlug={leagueDef.espnBoxscoreSlug}
+                league={league}
+                isGoing={goingKeys.has(`${league}:${e.id}`)}
+                groups={myGroups}
+              />
             ))}
           </div>
         </section>
@@ -188,7 +251,15 @@ export default async function TeamProfilePage({
           {completed.length === 0 && <p className="text-sm text-muted">No completed games yet this season.</p>}
           <div className="space-y-2">
             {completed.map((e) => (
-              <GameRow key={e.id} event={e} teamId={teamId} boxscoreSlug={leagueDef.espnBoxscoreSlug} />
+              <GameRow
+                key={e.id}
+                event={e}
+                teamId={teamId}
+                boxscoreSlug={leagueDef.espnBoxscoreSlug}
+                league={league}
+                isGoing={false}
+                groups={[]}
+              />
             ))}
           </div>
         </section>

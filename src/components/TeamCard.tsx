@@ -18,10 +18,12 @@ export default function TeamCard({
   team,
   league,
   size = "md",
+  fanIntensity,
 }: {
   team: TeamCardData;
   league: string;
   size?: "sm" | "md";
+  fanIntensity?: "CASUAL" | "SUPERFAN";
 }) {
   const leagueDef = getLeague(league);
   const div = leagueDef.hasDivisions ? divisionForAbbreviation(team.abbreviation) : undefined;
@@ -30,7 +32,11 @@ export default function TeamCard({
   const panelHeight = size === "sm" ? "h-24" : "h-32";
 
   return (
-    <div className="group flex flex-col overflow-hidden rounded-2xl border-[3px] border-ink bg-paper transition-transform duration-150 hover:-translate-y-1 hover:shadow-[4px_4px_0_0_#111111]">
+    <div
+      className={`group flex flex-col overflow-hidden rounded-2xl border-[3px] bg-paper transition-transform duration-150 hover:-translate-y-1 hover:shadow-[4px_4px_0_0_#111111] ${
+        fanIntensity === "CASUAL" ? "border-hairline" : "border-ink"
+      }`}
+    >
       <div className="flex items-center justify-between bg-ink px-2.5 py-1 text-[9px] font-bold uppercase tracking-widest text-paper">
         <span>{leagueDef.shortName}</span>
         <span>{div ? `${div.conference} ${div.division}` : ""}</span>
@@ -41,6 +47,14 @@ export default function TeamCard({
         <span className="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full border-2 border-ink bg-yellow text-[10px] font-black text-ink">
           {team.abbreviation}
         </span>
+        {fanIntensity === "SUPERFAN" && (
+          <span
+            title="Superfan"
+            className="absolute left-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-ink bg-paper text-xs"
+          >
+            ⭐
+          </span>
+        )}
       </div>
 
       <div className="border-t-[3px] border-ink px-2.5 py-2">

@@ -2,13 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCurrentUser } from "@/lib/identity";
 import { prisma } from "@/lib/prisma";
+import { postToGroup } from "@/app/actions";
 
 const MODES = [
   {
     href: "lines",
     emoji: "📈",
     title: "Guess the spread",
-    body: "Before kickoff, guess the closing point spread for each game. Closest guess wins the week.",
+    body: "Guess the closing point spread for each game, due Tuesday night ET — honor system, don't peek first.",
   },
   {
     href: "straight",
@@ -21,6 +22,12 @@ const MODES = [
     emoji: "💀",
     title: "Survivor pool",
     body: "Pick one winner each week. Lose and you're out. Can't reuse a team all season.",
+  },
+  {
+    href: "fantasy",
+    emoji: "🏈",
+    title: "Fantasy lineup",
+    body: "Build the best weekly PPR lineup: QB/RB/RB/WR/WR/TE/K/DEF. Resets every week.",
   },
 ];
 
@@ -35,7 +42,10 @@ export default async function GroupPage({
 
   const group = await prisma.group.findUnique({
     where: { id: groupId },
-    include: { members: { include: { user: true }, orderBy: { joinedAt: "asc" } } },
+    include: {
+      members: { include: { user: true }, orderBy: { joinedAt: "asc" } },
+      posts: { include: { user: true }, orderBy: { createdAt: "desc" }, take: 20 },
+    },
   });
   if (!group) notFound();
 
@@ -76,7 +86,7 @@ export default async function GroupPage({
         </div>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-3">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {MODES.map((mode) => (
           <Link
             key={mode.href}
@@ -90,6 +100,48 @@ export default async function GroupPage({
             <div className="mt-1 text-sm text-muted">{mode.body}</div>
           </Link>
         ))}
+      </section>
+
+      <section>
+        <h2 className="font-display uppercase mb-3">Group board</h2>
+        <p className="mb-3 text-sm text-muted">
+          Post here — like sharing a game&apos;s ticket price and asking who&apos;s in.
+        </p>
+        <form action={postToGroup} className="mb-4 flex gap-2">
+          <input type="hidden" name="groupId" value={group.id} />
+          <input
+            name="message"
+            required
+            placeholder="e.g. Anyone wanna rip the Rams game?"
+            className="flex-1 rounded-md border-2 border-ink bg-transparent px-3 py-2 text-sm outline-none focus:bg-yellow-soft"
+          />
+          <button
+            type="submit"
+            className="rounded-full border-[3px] border-ink bg-ink px-4 py-2 font-display text-sm uppercase text-paper hover:bg-yellow hover:text-ink transition-colors"
+          >
+            Post
+          </button>
+        </form>
+        {group.posts.length === 0 ? (
+          <p className="text-sm text-muted">No posts yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {group.posts.map((post) => (
+              <div key={post.id} className="rounded-xl border-2 border-hairline p-3 text-sm">
+                <span className="font-bold">{post.user.name}:</span> {post.message}
+                <div className="mt-1 text-[10px] uppercase text-muted">
+                  {new Date(post.createdAt).toLocaleString(undefined, {
+                    timeZone: "America/New_York",
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getScoreboard, getCurrentWeek } from "@/lib/espn";
 import { getLeague } from "@/lib/leagues";
 import { loadGradedEvents } from "@/lib/grading";
+import { weekDeadline, formatDeadline, isPast } from "@/lib/dates";
 import { submitLinePick } from "@/app/actions";
 import WeekSelector from "@/components/WeekSelector";
 
@@ -34,6 +35,8 @@ export default async function LinesPage({
   const week = Number(sp.week) || defaults?.week || 1;
 
   const board = await getScoreboard(NFL_PATH, { season, seasonType, week });
+  const deadline = weekDeadline(board.events, 0, 23, 59, 59);
+  const weekLocked = isPast(deadline);
   const memberIds = group.members.map((m) => m.userId);
 
   const [myPicks, weekRows, allPicksEver] = await Promise.all([
@@ -75,8 +78,12 @@ export default async function LinesPage({
           {group.name} · Guess the spread
         </h1>
         <p className="mt-1 text-sm text-muted">
-          Enter your guess for the home-team spread before kickoff. Closest to the actual closing
-          line wins — lower total error is better.
+          Enter your guess for the home-team spread. Closest to the actual closing line wins —
+          lower total error is better.{" "}
+          {deadline &&
+            (weekLocked
+              ? "Picks for this week are locked."
+              : `Guesses are due ${formatDeadline(deadline)} — honor system: don't look up the real line before you guess.`)}
         </p>
       </div>
 
@@ -96,7 +103,7 @@ export default async function LinesPage({
             const comp = event.competitions[0];
             const home = comp.competitors.find((c) => c.homeAway === "home")!;
             const away = comp.competitors.find((c) => c.homeAway === "away")!;
-            const locked = comp.status.type.state !== "pre";
+            const locked = weekLocked || comp.status.type.state !== "pre";
             const actualSpread = comp.odds?.[0]?.spread;
             const myGuess = myGuessByEvent[event.id];
 

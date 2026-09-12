@@ -4,6 +4,8 @@ import { getCurrentUser } from "@/lib/identity";
 import { getTeams, getTeamSchedule, type ScheduleEvent } from "@/lib/espn";
 import { getLeague } from "@/lib/leagues";
 import { getFollowedTeams, type FollowedTeam } from "@/lib/followedTeams";
+import { getGoingKeys } from "@/lib/attendance";
+import { prisma } from "@/lib/prisma";
 import { followTeam, unfollowTeam } from "@/app/actions";
 import { formatGameDate, formatGameTime, etDateKey } from "@/lib/dates";
 import { TEAM_FILTER_COOKIE, teamKey, parseFilterCookie } from "@/lib/teamFilter";
@@ -11,11 +13,13 @@ import TeamCard from "@/components/TeamCard";
 import TeamLogoBadge from "@/components/TeamLogoBadge";
 import SportTabs from "@/components/SportTabs";
 import DivisionAccordion from "@/components/DivisionAccordion";
+import TicketActions from "@/components/TicketActions";
 
 interface FeedItem {
   league: string;
   teamId: string;
   team: FollowedTeam["team"];
+  fanIntensity: "CASUAL" | "SUPERFAN";
   event: ScheduleEvent;
   isToday: boolean;
   state: "pre" | "in" | "post";
@@ -38,6 +42,7 @@ async function buildFeed(visibleFollowed: FollowedTeam[]): Promise<FeedItem[]> {
         league: f.league,
         teamId: f.teamId,
         team: f.team,
+        fanIntensity: f.fanIntensity,
         event,
         isToday: !!todayEvent,
         state: event.competitions[0].status.type.state,
@@ -54,10 +59,23 @@ async function buildFeed(visibleFollowed: FollowedTeam[]): Promise<FeedItem[]> {
 
   return items
     .filter((i): i is FeedItem => i !== null)
-    .sort((a, b) => priority(a) - priority(b) || +new Date(a.event.date) - +new Date(b.event.date));
+    .sort(
+      (a, b) =>
+        priority(a) - priority(b) ||
+        Number(b.fanIntensity === "SUPERFAN") - Number(a.fanIntensity === "SUPERFAN") ||
+        +new Date(a.event.date) - +new Date(b.event.date)
+    );
 }
 
-function FeedCard({ item }: { item: FeedItem }) {
+function FeedCard({
+  item,
+  isGoing,
+  groups,
+}: {
+  item: FeedItem;
+  isGoing: boolean;
+  groups: { id: string; name: string }[];
+}) {
   const comp = item.event.competitions[0];
   const self = comp.competitors.find((c) => c.team.id === item.teamId);
   const opp = comp.competitors.find((c) => c.team.id !== item.teamId);
@@ -69,11 +87,14 @@ function FeedCard({ item }: { item: FeedItem }) {
   const lost = item.state === "post" && self.winner === false && opp.winner === true;
   const draw = item.state === "post" && !won && !lost;
   const isLive = item.state === "in";
+  const isSuperfan = item.fanIntensity === "SUPERFAN";
 
   // Anything not yet played (today or later) stays plain white — only a
   // live game (pulsing) or one that already finished today gets colored.
   // Once "today" moves on, a finished game stops matching todayEvent and
-  // the team's actual next game takes its place automatically.
+  // the team's actual next game takes its place automatically. A superfan
+  // team keeps the bold ink border even while unplayed; a casual one gets a
+  // lighter border so superfan games visually pop out of the feed.
   const cardClass = isLive
     ? "border-ink bg-emerald-200 animate-pulse"
     : item.state === "post"
@@ -82,16 +103,23 @@ function FeedCard({ item }: { item: FeedItem }) {
         : won
           ? "border-ink bg-emerald-50"
           : "border-ink bg-red-50"
-      : "border-ink";
+      : isSuperfan
+        ? "border-ink"
+        : "border-hairline";
 
   const espnSlug = getLeague(item.league).espnBoxscoreSlug;
   const espnUrl = `https://www.espn.com/${espnSlug}/game/_/gameId/${item.event.id}`;
+  const home = comp.competitors.find((c) => c.homeAway === "home");
+  const away = comp.competitors.find((c) => c.homeAway === "away");
 
   return (
     <div className={`rounded-2xl border-[3px] p-4 ${cardClass}`}>
       <Link href={`/teams/${item.league}/${item.teamId}`} className="block">
         <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-muted">
-          <span>{getLeague(item.league).shortName}</span>
+          <span className="flex items-center gap-1">
+            {getLeague(item.league).shortName}
+            {isSuperfan && <span title="Superfan">⭐</span>}
+          </span>
           {isLive && <span className="text-ink">● Live</span>}
         </div>
         <div className="mt-2 flex items-center gap-2">
@@ -120,6 +148,18 @@ function FeedCard({ item }: { item: FeedItem }) {
           </a>
         )}
       </div>
+      {item.state === "pre" && home && away && (
+        <div className="mt-2 border-t-2 border-dashed border-hairline pt-2">
+          <TicketActions
+            league={item.league}
+            eventId={item.event.id}
+            awayName={away.team.shortDisplayName ?? away.team.name ?? "Away"}
+            homeName={home.team.shortDisplayName ?? home.team.name ?? "Home"}
+            isGoing={isGoing}
+            groups={groups}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -135,11 +175,14 @@ export default async function Home({
   const { league: activeLeague = "nfl" } = await searchParams;
   const leagueDef = getLeague(activeLeague);
 
-  const [followed, browseTeams, filterCookie] = await Promise.all([
+  const [followed, browseTeams, filterCookie, goingKeys, groups] = await Promise.all([
     getFollowedTeams(user.id),
     getTeams(leagueDef.sportPath).catch(() => []),
     cookies().then((s) => s.get(TEAM_FILTER_COOKIE)?.value),
+    getGoingKeys(user.id),
+    prisma.groupMember.findMany({ where: { userId: user.id }, include: { group: true } }),
   ]);
+  const myGroups = groups.map((m) => ({ id: m.group.id, name: m.group.name }));
 
   const followedKeySet = new Set(followed.map((f) => `${f.league}:${f.teamId}`));
   const allKeys = [...followedKeySet];
@@ -169,7 +212,12 @@ export default async function Home({
           <p className="text-muted mb-4">Live games first, then today&apos;s, then what&apos;s coming up.</p>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {feed.map((item) => (
-              <FeedCard key={`${item.league}:${item.teamId}`} item={item} />
+              <FeedCard
+                key={`${item.league}:${item.teamId}`}
+                item={item}
+                isGoing={goingKeys.has(`${item.league}:${item.event.id}`)}
+                groups={myGroups}
+              />
             ))}
           </div>
         </section>
@@ -188,7 +236,7 @@ export default async function Home({
             {visibleFollowed.map((f) => (
               <div key={`${f.league}:${f.teamId}`} className="relative">
                 <Link href={`/teams/${f.league}/${f.teamId}`}>
-                  <TeamCard team={f.team} league={f.league} size="sm" />
+                  <TeamCard team={f.team} league={f.league} size="sm" fanIntensity={f.fanIntensity} />
                 </Link>
                 <form action={unfollowTeam} className="absolute -right-1.5 -bottom-1.5">
                   <input type="hidden" name="league" value={f.league} />
@@ -220,19 +268,48 @@ export default async function Home({
             renderTeam={(team) => {
               const key = `${activeLeague}:${team.id}`;
               const isFollowed = followedKeySet.has(key);
-              return (
-                <form action={isFollowed ? unfollowTeam : followTeam}>
-                  <input type="hidden" name="league" value={activeLeague} />
-                  <input type="hidden" name="teamId" value={team.id} />
-                  <button type="submit" className="relative block w-full text-left">
-                    <TeamCard team={team} league={activeLeague} size="sm" />
-                    {isFollowed && (
+              if (isFollowed) {
+                return (
+                  <form action={unfollowTeam}>
+                    <input type="hidden" name="league" value={activeLeague} />
+                    <input type="hidden" name="teamId" value={team.id} />
+                    <button type="submit" className="relative block w-full text-left">
+                      <TeamCard team={team} league={activeLeague} size="sm" />
                       <span className="absolute left-1.5 top-7 rounded-full border-2 border-ink bg-yellow px-2 py-0.5 text-[9px] font-black uppercase">
                         Following
                       </span>
-                    )}
-                  </button>
-                </form>
+                    </button>
+                  </form>
+                );
+              }
+              return (
+                <div>
+                  <TeamCard team={team} league={activeLeague} size="sm" />
+                  <div className="mt-1.5 grid grid-cols-2 gap-1">
+                    <form action={followTeam}>
+                      <input type="hidden" name="league" value={activeLeague} />
+                      <input type="hidden" name="teamId" value={team.id} />
+                      <input type="hidden" name="fanIntensity" value="CASUAL" />
+                      <button
+                        type="submit"
+                        className="w-full rounded-full border-2 border-hairline px-1.5 py-1 text-[9px] font-bold uppercase hover:bg-yellow-soft"
+                      >
+                        + Casual
+                      </button>
+                    </form>
+                    <form action={followTeam}>
+                      <input type="hidden" name="league" value={activeLeague} />
+                      <input type="hidden" name="teamId" value={team.id} />
+                      <input type="hidden" name="fanIntensity" value="SUPERFAN" />
+                      <button
+                        type="submit"
+                        className="w-full rounded-full border-2 border-ink px-1.5 py-1 text-[9px] font-bold uppercase hover:bg-yellow"
+                      >
+                        ⭐ Superfan
+                      </button>
+                    </form>
+                  </div>
+                </div>
               );
             }}
           />

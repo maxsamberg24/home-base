@@ -6,6 +6,7 @@ export interface FollowedTeam {
   league: string; // our slug
   teamId: string;
   team: EspnTeamDetail;
+  fanIntensity: "CASUAL" | "SUPERFAN";
 }
 
 // Fetches full ESPN team detail (record, next event, logos) for everything a
@@ -22,7 +23,12 @@ export async function getFollowedTeams(userId: string): Promise<FollowedTeam[]> 
       try {
         const league = getLeague(f.league);
         const team = await getTeam(league.sportPath, f.teamId);
-        return { league: f.league, teamId: f.teamId, team };
+        return {
+          league: f.league,
+          teamId: f.teamId,
+          team,
+          fanIntensity: f.fanIntensity === "SUPERFAN" ? "SUPERFAN" : "CASUAL",
+        };
       } catch {
         return null;
       }
