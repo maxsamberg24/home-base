@@ -5,7 +5,6 @@ import LockerBenchIcon from "@/components/LockerBenchIcon";
 
 const links = [
   { href: "/", label: "Home" },
-  { href: "/locker", label: "My Locker" },
   { href: "/schedule", label: "Schedule" },
   { href: "/standings", label: "Standings" },
   { href: "/news", label: "News" },
@@ -36,6 +35,15 @@ export default function Nav({ user }: { user: User }) {
               {l.label}
             </Link>
           ))}
+          <span className="mx-1 shrink-0 text-hairline select-none" aria-hidden="true">
+            |
+          </span>
+          <Link
+            href="/locker"
+            className="shrink-0 rounded-full px-3 py-1.5 font-display text-xs uppercase tracking-wide text-muted hover:bg-yellow-soft transition-colors"
+          >
+            My Locker
+          </Link>
         </nav>
 
         <div className="flex items-center gap-3 shrink-0">
