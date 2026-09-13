@@ -5,6 +5,7 @@ import LockerBenchIcon from "@/components/LockerBenchIcon";
 
 const links = [
   { href: "/", label: "Home" },
+  { href: "/locker", label: "My Locker" },
   { href: "/schedule", label: "Schedule" },
   { href: "/standings", label: "Standings" },
   { href: "/news", label: "News" },

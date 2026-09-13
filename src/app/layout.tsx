@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Archivo_Black, Inter } from "next/font/google";
+import { Archivo_Black, Inter, Permanent_Marker } from "next/font/google";
 import { cookies } from "next/headers";
 import "./globals.css";
 import { getCurrentUser } from "@/lib/identity";
@@ -20,6 +20,12 @@ const inter = Inter({
   subsets: ["latin"],
 });
 
+const marker = Permanent_Marker({
+  variable: "--font-permanent-marker",
+  weight: "400",
+  subsets: ["latin"],
+});
+
 export const metadata: Metadata = {
   title: "The Locker Room",
   description: "Every team you follow, your schedule, standings, friends, and games — in one hub.",
@@ -33,7 +39,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const selected = parseFilterCookie(store.get(TEAM_FILTER_COOKIE)?.value, allKeys);
 
   return (
-    <html lang="en" className={`${archivoBlack.variable} ${inter.variable} h-full antialiased`}>
+    <html lang="en" className={`${archivoBlack.variable} ${inter.variable} ${marker.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-paper text-ink">
         {user ? (
           <>

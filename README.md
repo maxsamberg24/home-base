@@ -1,31 +1,42 @@
 # The Locker Room
 
-A hub for every sports team you follow — NFL, NBA, MLB, college football,
-college basketball, and Premier League soccer — built on ESPN's public
-(unofficial) API, with friends, predictions, and peer-to-peer picks layered on
-top.
+A hub for every sports team you follow — NFL, NBA, MLB, NHL, college
+football, college basketball, and Premier League soccer — built on ESPN's
+public (unofficial) API, with friends, predictions, peer-to-peer picks, and a
+personal "locker" layered on top.
 
 ## Features
 
-- **Home** — a "next up" card for every team you follow, quick unfollow, and
-  an "add teams" browser (sport tabs → division accordion or flat grid →
-  trading-card team picker).
+- **Home** — a "next up" card for every team you follow (superfan teams get
+  priority), quick unfollow, and an "add teams" browser (sport tabs →
+  division accordion or flat grid → trading-card team picker, choosing
+  casual or superfan when you follow).
+- **My Locker** (`/locker`) — a personal hub: 3 public "locker door" photo
+  slots pulled from unlimited private photo storage, a 30-word sharpie-font
+  whiteboard, a trophy shelf (auto-awarded when a followed team wins a major
+  championship, from here forward only), a log of games you've attended with
+  photos attachable to each, and medals earned in group games. Every group
+  page shows all its members' lockers too.
 - **Team profiles** (`/teams/[league]/[teamId]`) — recent results and box
-  score links, upcoming games, roster, team stats, depth chart (NFL only),
-  news, which of your friends also follow this team, and a private notes box
-  (ticket info, rivalries, who to watch).
+  score links, upcoming games (with a ticket-price search link and an "I'm
+  going" flag), roster, team stats, depth chart (NFL only), news, casual/
+  superfan toggle, which of your friends also follow this team, and a
+  private notes box.
+- **News** (`/news`) — recent articles for every followed team, newest
+  first, filtered by the same team bar as everything else.
 - **Schedule** — list or calendar view, upcoming or results, filtered by
   whichever teams are toggled on in the bar at the bottom of the screen (that
-  bar persists across every page).
+  bar persists across every page); games you're going to are highlighted.
 - **Standings** — real ESPN conference/division tables per league you follow,
   your teams highlighted.
 - **Friends** — connect via a shareable friend code, see their followed
   teams, and any bets you have outstanding with them.
-- **Games** — season win-total & award predictions, three NFL group pick'em
-  modes (spread guess / straight-up / survivor) played in named groups, and a
-  friend-to-friend wager board: post a pick with a line and stake, a friend
-  accepts, declines, or counters back; a stats bar tracks your settled
-  record, net, and what's currently at risk.
+- **Games** — season win-total & award predictions, four NFL group modes
+  (spread guess, due Tuesday night ET on the honor system; straight-up
+  pick'em; survivor pool with an optional buy-in; a weekly best-lineup
+  fantasy game scored in standard PPR) played in named groups with their own
+  message board, and a friend-to-friend wager board: post a pick with a line
+  and stake, a friend accepts, declines, or counters back.
 - "Connect your accounts" placeholders (Venmo handle, DraftKings, Fantasy
   Football) — no real integration yet, just the UI slot marked "coming soon".
 
@@ -129,23 +140,41 @@ badge.
 
 ## Known simplifications
 
-- **Group pick'em games** (spread guess / straight-up / survivor) and
-  **season predictions** are NFL-only — weeks don't map cleanly onto
+- **Group pick'em games** (spread guess / straight-up / survivor / fantasy)
+  and **season predictions** are NFL-only — weeks don't map cleanly onto
   NBA/MLB's daily schedules, so generalizing them was out of scope here.
-- **Pick lock time** is "kickoff", not literally "noon Sunday" — this covers
-  Thursday/Sunday/Monday games uniformly without hardcoding a day-specific
-  cutoff.
+- **Spread picks lock Tuesday night ET** for the whole week (honor system —
+  nothing stops you from looking up the real line first); **fantasy lineups
+  lock Sunday at 1pm ET**; other picks lock at each game's own kickoff.
 - **Spread grading** (group games) uses whatever line ESPN is currently
   showing once a game is no longer pre-game, since the API doesn't expose a
   distinct "opening vs. closing line".
+- **Fantasy scoring** is standard PPR computed from ESPN's boxscore: kicker
+  points are flat per-make (3/FG, 1/XP, no distance tiers — the boxscore
+  doesn't expose individual kick distances), and team defense doesn't score
+  fumble-recovery points (the boxscore doesn't cleanly attribute which team
+  recovered).
 - **Friend wagers are unrefereed**: either participant can mark a settled
   wager's outcome — there's no dispute resolution or verification against a
   real result, since these are free-form picks (not always tied to a graded
   game).
 - **Player stats** on a team profile currently show the roster, not live
   season stat leaders (no cheap ESPN endpoint for that per player).
-- **NHL** is a visible "coming soon" tab placeholder only — no data, no
-  routes. Premier League is the only soccer league wired up.
+- **Ticket prices** link out to a SeatGeek search rather than showing a price
+  in-app — no ticket marketplace API/key is configured.
+- **Trophies** (My Locker) are only detected for the four major pro leagues
+  with a single championship game (Super Bowl, NBA Finals, World Series,
+  Stanley Cup) — Premier League's title is decided by a season-long table
+  and college football/basketball's playoff formats weren't worth the extra
+  detection logic here. Only awarded for championships from now forward,
+  never backfilled.
+- **Medals** (My Locker) are only awarded for the survivor pool and the
+  weekly fantasy game, which have an unambiguous winner — the spread and
+  straight-up pick'em leaderboards run all season with no clean "it's over"
+  signal to detect.
+- **Photos** are stored directly in Postgres (no blob storage/CDN set up),
+  capped at 4MB each, with no client-side compression or resizing.
+- Premier League is the only soccer league wired up.
 - Schedule's "Results" tab is capped at the 40 most recent games (an 82-game
   NBA/MLB season would otherwise render one very long page).
 - **Connect Venmo / DraftKings / Fantasy Football** are disabled

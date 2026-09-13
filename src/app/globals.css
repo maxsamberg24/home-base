@@ -19,6 +19,7 @@
   --color-yellow-soft: var(--yellow-soft);
   --font-display: var(--font-archivo-black);
   --font-sans: var(--font-inter);
+  --font-marker: var(--font-permanent-marker);
 }
 
 body {

@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCurrentUser } from "@/lib/identity";
 import { prisma } from "@/lib/prisma";
+import { ensureMedalsForGroup } from "@/lib/medals";
 import { postToGroup } from "@/app/actions";
+import LockerPreview from "@/components/LockerPreview";
 
 const MODES = [
   {
@@ -62,6 +64,15 @@ export default async function GroupPage({
     );
   }
 
+  await ensureMedalsForGroup(groupId);
+
+  const memberIds = group.members.map((m) => m.userId);
+  const [allPhotos, allTrophies, groupMedals] = await Promise.all([
+    prisma.photo.findMany({ where: { userId: { in: memberIds }, publicSlot: { not: null } } }),
+    prisma.trophy.findMany({ where: { userId: { in: memberIds } } }),
+    prisma.medal.findMany({ where: { groupId } }),
+  ]);
+
   return (
     <div className="space-y-8">
       <div>
@@ -83,6 +94,36 @@ export default async function GroupPage({
               {m.user.name}
             </span>
           ))}
+        </div>
+      </section>
+
+      <section>
+        <h2 className="font-display uppercase mb-1">Lockers</h2>
+        <p className="mb-3 text-sm text-muted">Everyone&apos;s door photos, trophies, and medals earned in this group.</p>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {group.members.map((m) => {
+            const memberSlots = [1, 2, 3].map(
+              (slot) => allPhotos.find((p) => p.userId === m.userId && p.publicSlot === slot) ?? null
+            );
+            const memberTrophies = allTrophies.filter((t) => t.userId === m.userId);
+            const memberMedals = groupMedals.filter((med) => med.userId === m.userId);
+            return (
+              <div key={m.id}>
+                <div className="mb-2 text-center font-display text-sm uppercase">
+                  {m.user.name}
+                  {m.userId === user.id && " (you)"}
+                </div>
+                <LockerPreview
+                  name={m.user.name}
+                  photos={memberSlots}
+                  note={m.user.lockerNote}
+                  trophies={memberTrophies}
+                  medals={memberMedals}
+                  compact
+                />
+              </div>
+            );
+          })}
         </div>
       </section>
 

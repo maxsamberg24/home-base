@@ -13,11 +13,13 @@ datasource db {
 }
 
 model User {
-  id          String   @id @default(cuid())
-  name        String
-  friendCode  String?  @unique
-  venmoHandle String?
-  createdAt   DateTime @default(now())
+  id                  String    @id @default(cuid())
+  name                String
+  friendCode          String?   @unique
+  venmoHandle         String?
+  lockerNote          String? // whiteboard: max ~30 words, enforced in the action
+  lockerNoteUpdatedAt DateTime?
+  createdAt           DateTime  @default(now())
 
   favoriteTeams     FavoriteTeam[]
   notes             TeamNote[]
@@ -30,6 +32,10 @@ model User {
   fantasyLineups    FantasyLineup[]
   gameAttendances   GameAttendance[]
   groupPosts        GroupPost[]
+  photos            Photo[]
+  gameLogEntries    GameLogEntry[]
+  trophies          Trophy[]
+  medals            Medal[]
   friendshipsA      Friendship[]       @relation("FriendA")
   friendshipsB      Friendship[]       @relation("FriendB")
   wagersCreated     Wager[]            @relation("WagerCreator")
@@ -140,6 +146,7 @@ model Group {
   survivorPicks  SurvivorPick[]
   fantasyLineups FantasyLineup[]
   posts          GroupPost[]
+  medals         Medal[]
 }
 
 // A short text post on a group's board — e.g. "tickets to Rams @ Giants are
@@ -270,4 +277,79 @@ model FantasyLineup {
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([groupId, userId, season, week])
+}
+
+// --- My Locker ---
+
+// A user-uploaded photo, stored directly in Postgres (no external blob
+// storage set up) — capped at a few MB each, no resizing/compression. Up to
+// three can be pinned to the public locker door (publicSlot 1-3); the rest
+// sit in private storage. One can optionally be filed under a game log entry.
+model Photo {
+  id          String   @id @default(cuid())
+  userId      String
+  contentType String
+  data        Bytes
+  caption     String?
+  publicSlot  Int? // 1, 2, or 3 — null means private storage only
+  gameLogId   String?
+  createdAt   DateTime @default(now())
+
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gameLog GameLogEntry? @relation(fields: [gameLogId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, publicSlot])
+}
+
+// A game a user logs having attended in person. Free-form opponent/date so
+// it isn't tied to a specific ESPN event existing/matching.
+model GameLogEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  league    String?
+  opponent  String
+  gameDate  DateTime
+  note      String?
+  createdAt DateTime @default(now())
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  photos Photo[]
+}
+
+// A championship a followed team won, detected from ESPN's postseason
+// schedule (see src/lib/trophies.ts) — only awarded for seasons that
+// complete from here forward, never backfilled for past years.
+model Trophy {
+  id        String   @id @default(cuid())
+  userId    String
+  league    String
+  teamId    String
+  season    Int
+  title     String // e.g. "Super Bowl Champions"
+  awardedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, league, teamId, season])
+}
+
+// A medal earned by winning a group game mode for a season (or week, for the
+// weekly-resetting fantasy game) — see src/lib/medals.ts. week defaults to 0
+// (rather than null) for season-level medals so the unique constraint below
+// actually catches duplicates — Postgres treats NULL as distinct per row,
+// which would silently defeat idempotency for SURVIVOR/LINES/STRAIGHT.
+model Medal {
+  id        String   @id @default(cuid())
+  userId    String
+  groupId   String
+  gameMode  String // SURVIVOR | FANTASY_WEEK | LINES | STRAIGHT
+  season    Int
+  week      Int      @default(0) // set only for FANTASY_WEEK; 0 = season-level
+  title     String
+  awardedAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, groupId, gameMode, season, week])
 }

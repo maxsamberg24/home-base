@@ -577,3 +577,129 @@ export async function postToGroup(formData: FormData) {
   await prisma.groupPost.create({ data: { groupId, userId, message, league, eventId } });
   revalidatePath(`/games/groups/${groupId}`);
 }
+
+// --- My Locker ---
+
+const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
+
+export async function uploadPhoto(formData: FormData) {
+  const userId = await requireUserId();
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) throw new Error("Choose a photo to upload");
+  if (!file.type.startsWith("image/")) throw new Error("Only image files are supported");
+  if (file.size > MAX_PHOTO_BYTES) throw new Error("Photos are capped at 4MB — try a smaller file");
+
+  const caption = String(formData.get("caption") ?? "").trim() || null;
+  const gameLogId = String(formData.get("gameLogId") ?? "").trim() || null;
+  const slotRaw = Number(formData.get("publicSlot"));
+  const publicSlot = [1, 2, 3].includes(slotRaw) ? slotRaw : null;
+
+  if (gameLogId) {
+    const entry = await prisma.gameLogEntry.findUnique({ where: { id: gameLogId } });
+    if (!entry || entry.userId !== userId) throw new Error("Game log entry not found");
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  await prisma.$transaction(async (tx) => {
+    if (publicSlot) {
+      await tx.photo.updateMany({ where: { userId, publicSlot }, data: { publicSlot: null } });
+    }
+    await tx.photo.create({
+      data: { userId, contentType: file.type, data: buffer, caption, gameLogId, publicSlot },
+    });
+  });
+
+  revalidatePath("/locker");
+}
+
+export async function setPublicSlot(formData: FormData) {
+  const userId = await requireUserId();
+  const photoId = String(formData.get("photoId"));
+  const slot = Number(formData.get("slot"));
+  if (![1, 2, 3].includes(slot)) throw new Error("Invalid slot");
+
+  const photo = await prisma.photo.findUnique({ where: { id: photoId } });
+  if (!photo || photo.userId !== userId) throw new Error("Photo not found");
+
+  await prisma.$transaction([
+    prisma.photo.updateMany({ where: { userId, publicSlot: slot }, data: { publicSlot: null } }),
+    prisma.photo.update({ where: { id: photoId }, data: { publicSlot: slot } }),
+  ]);
+
+  revalidatePath("/locker");
+}
+
+export async function unpinPhoto(formData: FormData) {
+  const userId = await requireUserId();
+  const photoId = String(formData.get("photoId"));
+
+  const photo = await prisma.photo.findUnique({ where: { id: photoId } });
+  if (!photo || photo.userId !== userId) throw new Error("Photo not found");
+
+  await prisma.photo.update({ where: { id: photoId }, data: { publicSlot: null } });
+  revalidatePath("/locker");
+}
+
+export async function deletePhoto(formData: FormData) {
+  const userId = await requireUserId();
+  const photoId = String(formData.get("photoId"));
+
+  const photo = await prisma.photo.findUnique({ where: { id: photoId } });
+  if (!photo || photo.userId !== userId) throw new Error("Photo not found");
+
+  await prisma.photo.delete({ where: { id: photoId } });
+  revalidatePath("/locker");
+}
+
+export async function addGameLogEntry(formData: FormData) {
+  const userId = await requireUserId();
+  const opponent = String(formData.get("opponent") ?? "").trim();
+  const gameDateRaw = String(formData.get("gameDate") ?? "");
+  const league = String(formData.get("league") ?? "").trim() || null;
+  const note = String(formData.get("note") ?? "").trim() || null;
+
+  if (!opponent) throw new Error("Who'd they play? is required");
+  // The date input gives a plain YYYY-MM-DD calendar date with no time — a
+  // naive `new Date(gameDateRaw)` parses that as UTC midnight, which then
+  // displays as the *previous* day once shown in ET (same class of bug this
+  // app hit before with server-local dates). Anchor to noon UTC instead so
+  // it lands on the same calendar day in ET no matter what.
+  const [y, m, d] = gameDateRaw.split("-").map(Number);
+  const gameDate = y && m && d ? new Date(Date.UTC(y, m - 1, d, 12)) : new Date(NaN);
+  if (Number.isNaN(gameDate.getTime())) throw new Error("Enter a valid date");
+
+  await prisma.gameLogEntry.create({ data: { userId, opponent, gameDate, league, note } });
+  revalidatePath("/locker");
+}
+
+export async function deleteGameLogEntry(formData: FormData) {
+  const userId = await requireUserId();
+  const id = String(formData.get("id"));
+
+  const entry = await prisma.gameLogEntry.findUnique({ where: { id } });
+  if (!entry || entry.userId !== userId) throw new Error("Entry not found");
+
+  await prisma.gameLogEntry.delete({ where: { id } });
+  revalidatePath("/locker");
+}
+
+const MAX_LOCKER_NOTE_WORDS = 30;
+
+export async function setLockerNote(formData: FormData) {
+  const userId = await requireUserId();
+  const text = String(formData.get("text") ?? "").trim();
+
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  if (wordCount > MAX_LOCKER_NOTE_WORDS) {
+    throw new Error(`Keep it to ${MAX_LOCKER_NOTE_WORDS} words or fewer (that one's ${wordCount}).`);
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { lockerNote: text || null, lockerNoteUpdatedAt: new Date() },
+  });
+
+  revalidatePath("/locker");
+  revalidatePath("/games", "layout");
+}
