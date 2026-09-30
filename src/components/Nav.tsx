@@ -10,6 +10,7 @@ const links = [
   { href: "/news", label: "News" },
   { href: "/friends", label: "Friends" },
   { href: "/games", label: "Games" },
+  { href: "/notifications", label: "Notify" },
 ];
 
 export default function Nav({ user }: { user: User }) {

@@ -1,14 +1,22 @@
 // Registry of supported leagues. `slug` is our own short id (used in URLs,
-// DB rows); `sportPath` is ESPN's own path segment used to build API URLs
-// (site.api.espn.com/apis/site/v2/sports/{sportPath}/...).
+// DB rows). Most leagues are backed by ESPN's public API, where `sportPath`
+// is ESPN's own path segment (site.api.espn.com/apis/site/v2/sports/{sportPath}/...).
+// A couple of leagues ESPN doesn't carry real data for are backed by their
+// own official feeds instead (see src/lib/sports.ts, src/lib/lnb.ts,
+// src/lib/euroleague.ts) — for those, `providerCompetitionId` holds
+// whatever id that provider's API needs instead of an ESPN sportPath.
+export type LeagueProvider = "espn" | "lnb" | "euroleague";
+
 export interface LeagueDef {
   slug: string;
-  sportPath: string;
+  sportPath: string; // ESPN-backed leagues only; unused for other providers
   name: string;
   shortName: string;
   hasDivisions: boolean; // NFL-style conference/division grouping
   hasDepthChart: boolean; // football-only concept
-  espnBoxscoreSlug: string; // espn.com/{slug}/boxscore/_/gameId/{id}
+  espnBoxscoreSlug: string; // espn.com/{slug}/boxscore/_/gameId/{id} — ESPN-backed only
+  provider: LeagueProvider;
+  providerCompetitionId?: string;
 }
 
 export const LEAGUES: LeagueDef[] = [
@@ -20,6 +28,7 @@ export const LEAGUES: LeagueDef[] = [
     hasDivisions: true,
     hasDepthChart: true,
     espnBoxscoreSlug: "nfl",
+    provider: "espn",
   },
   {
     slug: "nba",
@@ -33,6 +42,7 @@ export const LEAGUES: LeagueDef[] = [
     hasDivisions: false,
     hasDepthChart: false,
     espnBoxscoreSlug: "nba",
+    provider: "espn",
   },
   {
     slug: "mlb",
@@ -42,6 +52,7 @@ export const LEAGUES: LeagueDef[] = [
     hasDivisions: false,
     hasDepthChart: false,
     espnBoxscoreSlug: "mlb",
+    provider: "espn",
   },
   {
     slug: "college-football",
@@ -51,6 +62,7 @@ export const LEAGUES: LeagueDef[] = [
     hasDivisions: false,
     hasDepthChart: false,
     espnBoxscoreSlug: "college-football",
+    provider: "espn",
   },
   {
     slug: "mens-college-basketball",
@@ -60,6 +72,7 @@ export const LEAGUES: LeagueDef[] = [
     hasDivisions: false,
     hasDepthChart: false,
     espnBoxscoreSlug: "mens-college-basketball",
+    provider: "espn",
   },
   {
     slug: "nhl",
@@ -69,6 +82,7 @@ export const LEAGUES: LeagueDef[] = [
     hasDivisions: false,
     hasDepthChart: false,
     espnBoxscoreSlug: "nhl",
+    provider: "espn",
   },
   {
     slug: "soccer.eng.1",
@@ -78,6 +92,37 @@ export const LEAGUES: LeagueDef[] = [
     hasDivisions: false,
     hasDepthChart: false,
     espnBoxscoreSlug: "soccer/match",
+    provider: "espn",
+  },
+  {
+    // France's actual second-division basketball league (Élite 2 / "Pro B").
+    // ESPN carries no French basketball at all, so this is backed directly
+    // by the French federation's own public API (api-prod.lnb.fr) — see
+    // src/lib/lnb.ts. No roster/news data is available there (known gap).
+    slug: "fra-elite2",
+    sportPath: "",
+    name: "Élite 2 (France)",
+    shortName: "Élite 2",
+    hasDivisions: false,
+    hasDepthChart: false,
+    espnBoxscoreSlug: "",
+    provider: "lnb",
+    providerCompetitionId: "318",
+  },
+  {
+    // ESPN's EuroLeague coverage is a bare team list with no real
+    // schedule/scores/standings/news/roster data at all, so this is backed
+    // by EuroLeague's own official live-data feed instead — see
+    // src/lib/euroleague.ts. No roster/news data there either.
+    slug: "euroleague",
+    sportPath: "",
+    name: "EuroLeague",
+    shortName: "EuroLeague",
+    hasDivisions: false,
+    hasDepthChart: false,
+    espnBoxscoreSlug: "",
+    provider: "euroleague",
+    providerCompetitionId: "E",
   },
 ];
 

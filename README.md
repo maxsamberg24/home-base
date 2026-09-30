@@ -1,8 +1,10 @@
 # The Locker Room
 
 A hub for every sports team you follow — NFL, NBA, MLB, NHL, college
-football, college basketball, and Premier League soccer — built on ESPN's
-public (unofficial) API, with friends, predictions, peer-to-peer picks, and a
+football, college basketball, Premier League soccer, EuroLeague, and French
+Élite 2 basketball — built on ESPN's public (unofficial) API (plus two
+leagues' own official feeds where ESPN has no real data — see **Multi-source
+architecture** below), with friends, predictions, peer-to-peer picks, and a
 personal "locker" layered on top.
 
 ## Features
@@ -138,6 +140,29 @@ badge.
   single `favoriteTeamId` column, so one person can follow teams across every
   supported league at once.
 
+## Multi-source architecture
+
+Two leagues aren't on ESPN in any real sense — checked directly against the
+live API: EuroLeague returns an empty schedule, roster, standings, and news
+for every team, even during the live season, and ESPN carries no French
+basketball at all. Both are backed by their own official feeds instead:
+
+- **EuroLeague** (`src/lib/euroleague.ts`) — EuroLeague's own public feed at
+  `api-live.euroleague.net`. Standings are computed here from the full
+  season's game results, since that feed has no standalone standings
+  endpoint.
+- **Élite 2 / "Pro B"** (`src/lib/lnb.ts`) — the actual second division of
+  French basketball, via the French federation's own public API at
+  `api-prod.lnb.fr`. Its match endpoint is round-scoped with no "whole
+  season" option, so a team's schedule means sweeping every round (up to 38)
+  and keeping the ones it played in.
+- `src/lib/sports.ts` is the dispatch layer: every page asks it for a
+  league's teams/schedule/standings/news/roster, and it picks ESPN or the
+  matching native adapter based on `LeagueDef.provider` in
+  `src/lib/leagues.ts`. All three return the exact same shapes
+  (`EspnTeamRef`, `ScheduleEvent`, `StandingsGroup`, ...), so no page needs
+  to know or care which provider actually backs a given league.
+
 ## Known simplifications
 
 - **Group pick'em games** (spread guess / straight-up / survivor / fantasy)
@@ -179,6 +204,15 @@ badge.
   NBA/MLB season would otherwise render one very long page).
 - **Connect Venmo / DraftKings / Fantasy Football** are disabled
   placeholders — no OAuth or real money movement wired up.
+- **EuroLeague and Élite 2** (see Multi-source architecture) have no news or
+  roster/player-stats data — neither official feed exposes it publicly.
+  Élite 2 schedules are ~38 sequential requests per team lookup (cached), so
+  the very first load for a newly-followed team is slower than an ESPN one.
+- **Text notifications** ("Notify" tab): preferences (phone number, and
+  per-team game-start/score-update/final-score toggles) save and persist,
+  but nothing is actually sent yet — that needs a real SMS provider account
+  (e.g. Twilio) wired up in `src/lib/notifications.ts`, which only the app
+  owner can provision.
 
 ## Data source note
 

@@ -3,14 +3,8 @@ import { getCurrentUser } from "@/lib/identity";
 import { getLeague } from "@/lib/leagues";
 import { getFriendIds } from "@/lib/friends";
 import { prisma } from "@/lib/prisma";
-import {
-  getTeam,
-  getTeamNews,
-  getTeamSchedule,
-  getTeamRoster,
-  getDepthChart,
-  type ScheduleEvent,
-} from "@/lib/espn";
+import { getDepthChart, type ScheduleEvent } from "@/lib/espn";
+import { getLeagueTeam, getLeagueTeamNews, getLeagueTeamSchedule, getLeagueTeamRoster } from "@/lib/sports";
 import { divisionForAbbreviation } from "@/lib/divisions";
 import { followTeam, unfollowTeam, saveTeamNote, setFanIntensity } from "@/app/actions";
 import { formatGameDate, formatGameTime } from "@/lib/dates";
@@ -72,14 +66,16 @@ function GameRow({
               <span className={won ? "font-bold" : lost ? "font-bold text-muted" : "font-bold"}>
                 {won ? "W" : lost ? "L" : "D"} {selfScore}-{oppScore}
               </span>
-              <a
-                href={`https://www.espn.com/${boxscoreSlug}/boxscore/_/gameId/${event.id}`}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-muted underline"
-              >
-                box score
-              </a>
+              {boxscoreSlug && (
+                <a
+                  href={`https://www.espn.com/${boxscoreSlug}/boxscore/_/gameId/${event.id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-muted underline"
+                >
+                  box score
+                </a>
+              )}
             </>
           ) : (
             <span className="text-muted">
@@ -121,10 +117,10 @@ export default async function TeamProfilePage({
   if (!user) return null;
 
   const [team, news, schedule, roster, depthChart, favorite, note, friendIds, goingKeys, memberships] = await Promise.all([
-    getTeam(leagueDef.sportPath, teamId).catch(() => null),
-    getTeamNews(leagueDef.sportPath, teamId, 6).catch(() => []),
-    getTeamSchedule(leagueDef.sportPath, teamId).catch(() => []),
-    getTeamRoster(leagueDef.sportPath, teamId).catch(() => []),
+    getLeagueTeam(leagueDef, teamId).catch(() => null),
+    getLeagueTeamNews(leagueDef, teamId, 6).catch(() => []),
+    getLeagueTeamSchedule(leagueDef, teamId).catch(() => []),
+    getLeagueTeamRoster(leagueDef, teamId).catch(() => []),
     leagueDef.hasDepthChart ? getDepthChart(leagueDef.sportPath, teamId).catch(() => []) : Promise.resolve([]),
     prisma.favoriteTeam.findUnique({
       where: { userId_league_teamId: { userId: user.id, league, teamId } },

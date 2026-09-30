@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { getCurrentUser } from "@/lib/identity";
-import { getTeams, getTeamSchedule, type ScheduleEvent } from "@/lib/espn";
+import type { ScheduleEvent } from "@/lib/espn";
+import { getLeagueTeams, getLeagueTeamSchedule } from "@/lib/sports";
 import { getLeague } from "@/lib/leagues";
 import { getFollowedTeams, type FollowedTeam } from "@/lib/followedTeams";
 import { getGoingKeys } from "@/lib/attendance";
@@ -31,7 +32,7 @@ async function buildFeed(visibleFollowed: FollowedTeam[]): Promise<FeedItem[]> {
   const items = await Promise.all(
     visibleFollowed.map(async (f): Promise<FeedItem | null> => {
       const league = getLeague(f.league);
-      const schedule = await getTeamSchedule(league.sportPath, f.teamId).catch(() => []);
+      const schedule = await getLeagueTeamSchedule(league, f.teamId).catch(() => []);
       const todayEvent = schedule.find((e) => etDateKey(new Date(e.date)) === todayKey);
       const nextUpcoming = schedule
         .filter((e) => e.competitions[0]?.status.type.state === "pre")
@@ -137,7 +138,7 @@ function FeedCard({
           {item.state === "pre" &&
             (item.isToday ? `Today · ${formatGameTime(item.event.date)}` : `${formatGameDate(item.event.date)} · ${formatGameTime(item.event.date)}`)}
         </span>
-        {item.state !== "pre" && (
+        {item.state !== "pre" && espnSlug && (
           <a
             href={espnUrl}
             target="_blank"
@@ -177,7 +178,7 @@ export default async function Home({
 
   const [followed, browseTeams, filterCookie, goingKeys, groups] = await Promise.all([
     getFollowedTeams(user.id),
-    getTeams(leagueDef.sportPath).catch(() => []),
+    getLeagueTeams(leagueDef).catch(() => []),
     cookies().then((s) => s.get(TEAM_FILTER_COOKIE)?.value),
     getGoingKeys(user.id),
     prisma.groupMember.findMany({ where: { userId: user.id }, include: { group: true } }),

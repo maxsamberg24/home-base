@@ -1,8 +1,9 @@
 import { cookies } from "next/headers";
 import { getCurrentUser } from "@/lib/identity";
 import { getFollowedTeams } from "@/lib/followedTeams";
-import { getStandings, statValue, type StandingsGroup } from "@/lib/espn";
+import { statValue, type StandingsGroup } from "@/lib/espn";
 import { getLeague } from "@/lib/leagues";
+import { getLeagueStandings } from "@/lib/sports";
 import { TEAM_FILTER_COOKIE, teamKey, parseFilterCookie } from "@/lib/teamFilter";
 
 function StandingsNode({
@@ -89,7 +90,7 @@ export default async function StandingsPage() {
   const standingsByLeague = await Promise.all(
     leaguesToShow.map(async (slug) => {
       const league = getLeague(slug);
-      const groups = await getStandings(league.sportPath).catch(() => []);
+      const groups = await getLeagueStandings(league).catch(() => []);
       return { league, groups };
     })
   );

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import { getTeam, type EspnTeamDetail } from "@/lib/espn";
+import type { EspnTeamDetail } from "@/lib/espn";
 import { getLeague } from "@/lib/leagues";
+import { getLeagueTeam } from "@/lib/sports";
 
 export interface FollowedTeam {
   league: string; // our slug
@@ -22,7 +23,7 @@ export async function getFollowedTeams(userId: string): Promise<FollowedTeam[]> 
     favorites.map(async (f): Promise<FollowedTeam | null> => {
       try {
         const league = getLeague(f.league);
-        const team = await getTeam(league.sportPath, f.teamId);
+        const team = await getLeagueTeam(league, f.teamId);
         return {
           league: f.league,
           teamId: f.teamId,

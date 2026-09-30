@@ -1,8 +1,9 @@
 import { cookies } from "next/headers";
 import { getCurrentUser } from "@/lib/identity";
 import { getFollowedTeams } from "@/lib/followedTeams";
-import { getTeamNews, type EspnArticle } from "@/lib/espn";
+import type { EspnArticle } from "@/lib/espn";
 import { getLeague } from "@/lib/leagues";
+import { getLeagueTeamNews } from "@/lib/sports";
 import { TEAM_FILTER_COOKIE, teamKey, parseFilterCookie } from "@/lib/teamFilter";
 import TeamLogoBadge from "@/components/TeamLogoBadge";
 
@@ -28,7 +29,7 @@ export default async function NewsPage() {
   const perTeam = await Promise.all(
     visibleTeams.map(async (f): Promise<FeedArticle[]> => {
       const league = getLeague(f.league);
-      const articles = await getTeamNews(league.sportPath, f.teamId, 8).catch(() => []);
+      const articles = await getLeagueTeamNews(league, f.teamId, 8).catch(() => []);
       return articles.map((a) => ({
         ...a,
         league: f.league,

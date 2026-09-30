@@ -4,7 +4,8 @@ import { getCurrentUser } from "@/lib/identity";
 import { getFollowedTeams } from "@/lib/followedTeams";
 import { getGoingKeys } from "@/lib/attendance";
 import { prisma } from "@/lib/prisma";
-import { getTeamSchedule, type ScheduleEvent } from "@/lib/espn";
+import type { ScheduleEvent } from "@/lib/espn";
+import { getLeagueTeamSchedule } from "@/lib/sports";
 import { getLeague } from "@/lib/leagues";
 import { TEAM_FILTER_COOKIE, teamKey, parseFilterCookie } from "@/lib/teamFilter";
 import { etDateKey, etDateParts, formatGameTime } from "@/lib/dates";
@@ -98,7 +99,7 @@ export default async function SchedulePage({
   const schedules = await Promise.all(
     visibleTeams.map(async (f) => {
       const league = getLeague(f.league);
-      const events = await getTeamSchedule(league.sportPath, f.teamId).catch(() => []);
+      const events = await getLeagueTeamSchedule(league, f.teamId).catch(() => []);
       return enrich(
         f.league,
         f.teamId,
@@ -284,14 +285,16 @@ export default async function SchedulePage({
                           <span className="font-bold">
                             {isDraw ? "D" : g.won ? "W" : "L"} {g.selfScore}-{g.oppScore}
                           </span>
-                          <a
-                            href={`https://www.espn.com/${getLeague(g.league).espnBoxscoreSlug}/boxscore/_/gameId/${g.id}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="font-display text-xs uppercase text-ink underline decoration-yellow decoration-4 underline-offset-4"
-                          >
-                            Box score →
-                          </a>
+                          {getLeague(g.league).espnBoxscoreSlug && (
+                            <a
+                              href={`https://www.espn.com/${getLeague(g.league).espnBoxscoreSlug}/boxscore/_/gameId/${g.id}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-display text-xs uppercase text-ink underline decoration-yellow decoration-4 underline-offset-4"
+                            >
+                              Box score →
+                            </a>
+                          )}
                         </>
                       ) : (
                         <Link

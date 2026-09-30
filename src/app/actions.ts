@@ -703,3 +703,36 @@ export async function setLockerNote(formData: FormData) {
   revalidatePath("/locker");
   revalidatePath("/games", "layout");
 }
+
+// --- Text notification preferences (sending itself isn't wired up yet —
+// see src/lib/notifications.ts) ---
+
+export async function setPhoneNumber(formData: FormData) {
+  const userId = await requireUserId();
+  const phoneNumber = String(formData.get("phoneNumber") ?? "").trim();
+
+  if (phoneNumber && !/^\+?[0-9 ()-]{7,20}$/.test(phoneNumber)) {
+    throw new Error("That doesn't look like a valid phone number");
+  }
+
+  await prisma.user.update({ where: { id: userId }, data: { phoneNumber: phoneNumber || null } });
+  revalidatePath("/notifications");
+}
+
+export async function setTeamNotificationPrefs(formData: FormData) {
+  const userId = await requireUserId();
+  const league = String(formData.get("league") ?? "");
+  const teamId = String(formData.get("teamId") ?? "");
+  if (!league || !teamId) throw new Error("league and teamId are required");
+
+  await prisma.favoriteTeam.update({
+    where: { userId_league_teamId: { userId, league, teamId } },
+    data: {
+      notifyGameStart: formData.get("notifyGameStart") === "on",
+      notifyScoreUpdates: formData.get("notifyScoreUpdates") === "on",
+      notifyFinalScore: formData.get("notifyFinalScore") === "on",
+    },
+  });
+
+  revalidatePath("/notifications");
+}

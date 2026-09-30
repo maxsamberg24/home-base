@@ -19,6 +19,11 @@ model User {
   venmoHandle         String?
   lockerNote          String? // whiteboard: max ~30 words, enforced in the action
   lockerNoteUpdatedAt DateTime?
+  // Text-notification preferences. Phone number presence is the on/off
+  // switch — no separate enabled flag. Sending itself isn't wired up yet
+  // (needs a real SMS provider); this just captures what someone wants so
+  // it's ready to go the moment that's connected. See src/lib/notifications.ts.
+  phoneNumber         String?
   createdAt           DateTime  @default(now())
 
   favoriteTeams     FavoriteTeam[]
@@ -53,6 +58,12 @@ model FavoriteTeam {
   teamId       String
   fanIntensity String   @default("CASUAL") // CASUAL | SUPERFAN
   addedAt      DateTime @default(now())
+
+  // Per-team text notification toggles — only take effect once a phone
+  // number is saved and an SMS provider is wired up.
+  notifyGameStart    Boolean @default(false)
+  notifyScoreUpdates Boolean @default(false)
+  notifyFinalScore   Boolean @default(false)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
