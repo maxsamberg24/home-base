@@ -1,16 +1,38 @@
-// Text-message sending isn't wired up yet — there's no SMS provider account
-// configured (Twilio is the standard choice: needs its own account, a phone
-// number, and API keys that only the app owner can provision). Preferences
-// (phone number + per-team toggles for game start / score updates / final
-// score) are already collected and stored — see setPhoneNumber and
-// setTeamNotificationPrefs in src/app/actions.ts, and the /notifications
-// page — so turning this on later is just filling in the body below and
-// calling it from wherever the trigger should live (e.g. a Netlify
-// Scheduled Function polling for games starting/ending).
+// Text sending via Twilio's REST API (plain fetch — no SDK needed). Texting
+// turns on automatically once these three env vars exist in Netlify:
+//   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER
+// Until then textingConfigured() is false and nothing is ever sent.
+
+export function textingConfigured(): boolean {
+  return !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER);
+}
+
+// Twilio needs E.164 (+15551234567). Accept the ways people actually type a
+// US number too; anything else must already include a +country code.
+export function normalizePhone(raw: string): string | null {
+  const cleaned = raw.replace(/[^\d+]/g, "");
+  if (/^\+\d{8,15}$/.test(cleaned)) return cleaned;
+  if (/^\d{10}$/.test(cleaned)) return `+1${cleaned}`;
+  if (/^1\d{10}$/.test(cleaned)) return `+${cleaned}`;
+  return null;
+}
+
 export async function sendTextUpdate(to: string, message: string): Promise<void> {
-  void to;
-  void message;
-  throw new Error(
-    "Text sending isn't configured yet — set TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM_NUMBER and implement this function."
-  );
+  const sid = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  const from = process.env.TWILIO_FROM_NUMBER;
+  if (!sid || !token || !from) throw new Error("Texting isn't configured (missing Twilio env vars).");
+
+  const res = await fetch(`${process.env.TWILIO_API_BASE ?? "https://api.twilio.com"}/2010-04-01/Accounts/${sid}/Messages.json`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString("base64")}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({ To: to, From: from, Body: message }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Twilio rejected the text (${res.status}): ${detail.slice(0, 300)}`);
+  }
 }

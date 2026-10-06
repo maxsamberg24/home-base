@@ -1,11 +1,18 @@
 import { getCurrentUser } from "@/lib/identity";
 import { getFollowedTeams } from "@/lib/followedTeams";
 import { getLeague } from "@/lib/leagues";
-import { setPhoneNumber, setTeamNotificationPrefs } from "@/app/actions";
+import { setPhoneNumber, setTeamNotificationPrefs, sendTestText } from "@/app/actions";
+import { textingConfigured } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
 import TeamLogoBadge from "@/components/TeamLogoBadge";
 
-export default async function NotificationsPage() {
+export default async function NotificationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ test?: string }>;
+}) {
+  const { test } = await searchParams;
+  const connected = textingConfigured();
   const user = await getCurrentUser();
   if (!user) return null;
 
@@ -23,10 +30,23 @@ export default async function NotificationsPage() {
         </h1>
         <p className="mt-2 max-w-2xl text-muted">
           Your personal Locker Room agent can text you updates — pick which teams and what kind of
-          updates you want. <strong className="text-ink">Sending isn&apos;t connected yet</strong> —
-          this needs a real text-messaging provider set up first — but your preferences save now, so
-          it&apos;ll start working the moment that&apos;s wired up.
+          updates you want. Reply STOP to any text to opt out.
         </p>
+        <p
+          className={`mt-3 inline-block rounded-full border-2 px-3 py-1 text-xs font-bold uppercase ${
+            connected ? "border-ink bg-yellow" : "border-hairline text-muted"
+          }`}
+        >
+          {connected ? "Texting is connected" : "Texting isn't connected yet — your picks are saved for when it is"}
+        </p>
+        {test && (
+          <p className="mt-3 rounded-lg border-[3px] border-ink bg-yellow px-3 py-2 text-sm font-medium">
+            {test === "sent" && "Test text sent — check your phone."}
+            {test === "failed" && "Twilio rejected the test text. Check the number (and, on a trial account, that it's a verified number)."}
+            {test === "nophone" && "Save your phone number first."}
+            {test === "notconfigured" && "Texting isn't connected yet."}
+          </p>
+        )}
       </div>
 
       <section className="rounded-2xl border-[3px] border-ink p-5">
@@ -47,6 +67,16 @@ export default async function NotificationsPage() {
             Save
           </button>
         </form>
+        {connected && user.phoneNumber && (
+          <form action={sendTestText} className="mt-3">
+            <button
+              type="submit"
+              className="rounded-full border-2 border-ink px-3 py-1 text-xs font-bold uppercase hover:bg-yellow-soft"
+            >
+              Send me a test text
+            </button>
+          </form>
+        )}
       </section>
 
       <section>

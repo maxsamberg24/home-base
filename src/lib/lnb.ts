@@ -11,13 +11,41 @@ const ROOT = "https://api-prod.lnb.fr";
 type CacheEntry = { expires: number; value: unknown };
 const cache = new Map<string, CacheEntry>();
 
+// LNB's API now requires a bearer token. Their own website gets one for every
+// anonymous visitor from a public endpoint (lnb.fr/api/token) — it lives 15
+// minutes — so do exactly that, caching it and refreshing when it lapses.
+let tokenCache: { token: string; expires: number } | null = null;
+
+async function getToken(forceRefresh = false): Promise<string> {
+  if (!forceRefresh && tokenCache && tokenCache.expires > Date.now()) return tokenCache.token;
+  const res = await fetch("https://lnb.fr/api/token", { cache: "no-store" });
+  if (!res.ok) throw new Error(`LNB token request failed (${res.status})`);
+  const data = (await res.json()) as { token?: string };
+  if (!data.token) throw new Error("LNB token response had no token");
+  tokenCache = { token: data.token, expires: Date.now() + 13 * 60 * 1000 };
+  return data.token;
+}
+
 async function cachedFetch<T>(url: string, ttlMs: number, init?: RequestInit): Promise<T> {
   const key = `${url}::${init?.body ?? ""}`;
   const hit = cache.get(key);
   if (hit && hit.expires > Date.now()) return hit.value as T;
-  const res = await fetch(url, { ...init, cache: "no-store" });
+
+  const doFetch = async (forceToken: boolean) =>
+    fetch(url, {
+      ...init,
+      headers: { ...(init?.headers as Record<string, string>), Authorization: `Bearer ${await getToken(forceToken)}` },
+      cache: "no-store",
+    });
+
+  let res = await doFetch(false);
+  if (res.status === 401 || res.status === 403) res = await doFetch(true);
   if (!res.ok) throw new Error(`LNB request failed (${res.status}): ${url}`);
   const value = (await res.json()) as T;
+  // The API reports auth failures as 200 {success:false} on some paths.
+  if ((value as { success?: boolean }).success === false) {
+    throw new Error(`LNB request rejected: ${(value as { message?: string }).message}`);
+  }
   cache.set(key, { expires: Date.now() + ttlMs, value });
   return value;
 }

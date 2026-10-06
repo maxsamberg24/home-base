@@ -41,6 +41,7 @@ model User {
   gameLogEntries    GameLogEntry[]
   trophies          Trophy[]
   medals            Medal[]
+  notificationLogs  NotificationLog[]
   friendshipsA      Friendship[]       @relation("FriendA")
   friendshipsB      Friendship[]       @relation("FriendB")
   wagersCreated     Wager[]            @relation("WagerCreator")
@@ -363,4 +364,20 @@ model Medal {
   group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
   @@unique([userId, groupId, gameMode, season, week])
+}
+
+// Record of every text already sent, so the periodic runner never texts the
+// same thing twice. `kind` is GAMESTART, FINAL, or SCORE:<home>-<away>.
+model NotificationLog {
+  id      String   @id @default(cuid())
+  userId  String
+  league  String
+  teamId  String
+  eventId String
+  kind    String
+  sentAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, league, teamId, eventId, kind])
 }

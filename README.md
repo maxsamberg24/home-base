@@ -206,13 +206,18 @@ basketball at all. Both are backed by their own official feeds instead:
   placeholders — no OAuth or real money movement wired up.
 - **EuroLeague and Élite 2** (see Multi-source architecture) have no news or
   roster/player-stats data — neither official feed exposes it publicly.
-  Élite 2 schedules are ~38 sequential requests per team lookup (cached), so
+  LNB's API needs a short-lived bearer token, which `src/lib/lnb.ts` fetches from the same public endpoint their own website uses (it's undocumented, so it could change). Élite 2 schedules are ~38 sequential requests per team lookup (cached), so
   the very first load for a newly-followed team is slower than an ESPN one.
-- **Text notifications** ("Notify" tab): preferences (phone number, and
-  per-team game-start/score-update/final-score toggles) save and persist,
-  but nothing is actually sent yet — that needs a real SMS provider account
-  (e.g. Twilio) wired up in `src/lib/notifications.ts`, which only the app
-  owner can provision.
+- **Text notifications** ("Notify" tab) go out through Twilio and only turn
+  on once `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_FROM_NUMBER`
+  (plus `CRON_SECRET`) are set in Netlify. A scheduled function
+  (`netlify/functions/send-text-updates.mts`) pokes `/api/notifications/run`
+  every 5 minutes; `src/lib/notificationRunner.ts` decides what to text
+  (game starting within 30 min, live score changes at most every 10 min,
+  final scores within 8 hours) and `NotificationLog` guarantees each text
+  goes out once. Live-score texts are only as fresh as the 5-minute poll.
+  Twilio trial accounts can only text verified numbers, and US numbers need
+  carrier registration (A2P 10DLC / toll-free verification) for real use.
 
 ## Data source note
 

@@ -11,6 +11,7 @@ import { TEAM_FILTER_COOKIE } from "@/lib/teamFilter";
 import { getScoreboard } from "@/lib/espn";
 import { getLeague } from "@/lib/leagues";
 import { weekDeadline } from "@/lib/dates";
+import { normalizePhone, textingConfigured, sendTextUpdate } from "@/lib/notifications";
 import { FANTASY_SLOTS, type FantasyRoster } from "@/lib/fantasy";
 
 const NFL_PATH = getLeague("nfl").sportPath;
@@ -709,14 +710,32 @@ export async function setLockerNote(formData: FormData) {
 
 export async function setPhoneNumber(formData: FormData) {
   const userId = await requireUserId();
-  const phoneNumber = String(formData.get("phoneNumber") ?? "").trim();
+  const raw = String(formData.get("phoneNumber") ?? "").trim();
 
-  if (phoneNumber && !/^\+?[0-9 ()-]{7,20}$/.test(phoneNumber)) {
-    throw new Error("That doesn't look like a valid phone number");
+  let phoneNumber: string | null = null;
+  if (raw) {
+    phoneNumber = normalizePhone(raw);
+    if (!phoneNumber) throw new Error("Enter a valid phone number with area code (or +country code).");
   }
 
-  await prisma.user.update({ where: { id: userId }, data: { phoneNumber: phoneNumber || null } });
+  await prisma.user.update({ where: { id: userId }, data: { phoneNumber } });
   revalidatePath("/notifications");
+}
+
+export async function sendTestText() {
+  const user = await getCurrentUser();
+  if (!user) throw new Error("You need to set a display name first.");
+  if (!user.phoneNumber) redirect("/notifications?test=nophone");
+  if (!textingConfigured()) redirect("/notifications?test=notconfigured");
+
+  let ok = true;
+  try {
+    await sendTextUpdate(user.phoneNumber, "🏟️ The Locker Room: texts are working. You'll hear from me about the teams you turned alerts on for. Reply STOP anytime to opt out.");
+  } catch (e) {
+    console.error("sendTestText failed:", e);
+    ok = false;
+  }
+  redirect(ok ? "/notifications?test=sent" : "/notifications?test=failed");
 }
 
 export async function setTeamNotificationPrefs(formData: FormData) {
