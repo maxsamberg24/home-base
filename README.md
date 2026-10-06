@@ -216,8 +216,10 @@ basketball at all. Both are backed by their own official feeds instead:
   (game starting within 30 min, live score changes at most every 10 min,
   final scores within 8 hours) and `NotificationLog` guarantees each text
   goes out once. Live-score texts are only as fresh as the 5-minute poll.
-  Twilio trial accounts can only text verified numbers, and US numbers need
-  carrier registration (A2P 10DLC / toll-free verification) for real use.
+  Numbers must be verified (a 6-digit code texted to the user, 10-minute
+  expiry, 5 tries, 60s resend gap) before they receive anything; changing a
+  number resets verification. US carriers also require registration (A2P
+  10DLC or toll-free verification) for texts to actually be delivered.
 
 ## Data source note
 

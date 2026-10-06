@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { customAlphabet } from "nanoid";
+import { createHash, randomInt, timingSafeEqual } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser, SESSION_COOKIE } from "@/lib/identity";
 import { getFriendIds } from "@/lib/friends";
@@ -708,24 +709,112 @@ export async function setLockerNote(formData: FormData) {
 // --- Text notification preferences (sending itself isn't wired up yet —
 // see src/lib/notifications.ts) ---
 
+const CODE_TTL_MS = 10 * 60 * 1000;
+const RESEND_GAP_MS = 60 * 1000;
+const MAX_CODE_ATTEMPTS = 5;
+
+function hashCode(userId: string, code: string): string {
+  return createHash("sha256").update(`${userId}:${code}`).digest("hex");
+}
+
+// Texts a fresh 6-digit code to the user's saved number. Returns a status
+// string for the page banner. Not exported — only the actions below call it.
+async function issuePhoneCode(user: { id: string; phoneNumber: string | null; phoneVerifySentAt: Date | null }) {
+  if (!user.phoneNumber) return "nophone";
+  if (!textingConfigured()) return "notconfigured";
+  if (user.phoneVerifySentAt && Date.now() - user.phoneVerifySentAt.getTime() < RESEND_GAP_MS) return "wait";
+
+  const code = String(randomInt(100000, 1000000));
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      phoneVerifyHash: hashCode(user.id, code),
+      phoneVerifyExpires: new Date(Date.now() + CODE_TTL_MS),
+      phoneVerifySentAt: new Date(),
+      phoneVerifyAttempts: 0,
+    },
+  });
+  try {
+    await sendTextUpdate(user.phoneNumber, `Your Locker Room code is ${code}. It expires in 10 minutes.`);
+    return "sent";
+  } catch (e) {
+    console.error("issuePhoneCode failed:", e);
+    await prisma.user.update({ where: { id: user.id }, data: { phoneVerifySentAt: null } });
+    return "failed";
+  }
+}
+
 export async function setPhoneNumber(formData: FormData) {
-  const userId = await requireUserId();
+  const user = await getCurrentUser();
+  if (!user) throw new Error("You need to set a display name first.");
   const raw = String(formData.get("phoneNumber") ?? "").trim();
 
-  let phoneNumber: string | null = null;
-  if (raw) {
-    phoneNumber = normalizePhone(raw);
-    if (!phoneNumber) throw new Error("Enter a valid phone number with area code (or +country code).");
+  if (!raw) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { phoneNumber: null, phoneVerified: false, phoneVerifyHash: null, phoneVerifyExpires: null, phoneVerifySentAt: null },
+    });
+    revalidatePath("/notifications");
+    return;
   }
 
-  await prisma.user.update({ where: { id: userId }, data: { phoneNumber } });
+  const phoneNumber = normalizePhone(raw);
+  if (!phoneNumber) throw new Error("Enter a valid phone number with area code (or +country code).");
+  if (phoneNumber === user.phoneNumber) redirect("/notifications");
+
+  // A new number is unverified until its owner enters the code we text them.
+  const updated = await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      phoneNumber,
+      phoneVerified: false,
+      phoneVerifyHash: null,
+      phoneVerifyExpires: null,
+      phoneVerifySentAt: null,
+      phoneVerifyAttempts: 0,
+    },
+  });
+  const status = await issuePhoneCode(updated);
   revalidatePath("/notifications");
+  redirect(`/notifications?verify=${status}`);
+}
+
+export async function resendPhoneCode() {
+  const user = await getCurrentUser();
+  if (!user) throw new Error("You need to set a display name first.");
+  const status = await issuePhoneCode(user);
+  redirect(`/notifications?verify=${status}`);
+}
+
+export async function verifyPhone(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user) throw new Error("You need to set a display name first.");
+  const code = String(formData.get("code") ?? "").trim();
+
+  if (!user.phoneVerifyHash || !user.phoneVerifyExpires || user.phoneVerifyExpires.getTime() < Date.now()) {
+    redirect("/notifications?verify=expired");
+  }
+  if (user.phoneVerifyAttempts >= MAX_CODE_ATTEMPTS) redirect("/notifications?verify=locked");
+
+  const given = Buffer.from(hashCode(user.id, code));
+  const expected = Buffer.from(user.phoneVerifyHash);
+  if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
+    await prisma.user.update({ where: { id: user.id }, data: { phoneVerifyAttempts: { increment: 1 } } });
+    redirect("/notifications?verify=wrong");
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { phoneVerified: true, phoneVerifyHash: null, phoneVerifyExpires: null, phoneVerifyAttempts: 0 },
+  });
+  revalidatePath("/notifications");
+  redirect("/notifications?verify=ok");
 }
 
 export async function sendTestText() {
   const user = await getCurrentUser();
   if (!user) throw new Error("You need to set a display name first.");
-  if (!user.phoneNumber) redirect("/notifications?test=nophone");
+  if (!user.phoneNumber || !user.phoneVerified) redirect("/notifications?test=nophone");
   if (!textingConfigured()) redirect("/notifications?test=notconfigured");
 
   let ok = true;

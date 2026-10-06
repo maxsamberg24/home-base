@@ -24,6 +24,13 @@ model User {
   // (needs a real SMS provider); this just captures what someone wants so
   // it's ready to go the moment that's connected. See src/lib/notifications.ts.
   phoneNumber         String?
+  // A number only receives texts once its owner has entered the 6-digit code
+  // we texted them (the code is stored hashed, expires in 10 minutes).
+  phoneVerified       Boolean   @default(false)
+  phoneVerifyHash     String?
+  phoneVerifyExpires  DateTime?
+  phoneVerifySentAt   DateTime?
+  phoneVerifyAttempts Int       @default(0)
   createdAt           DateTime  @default(now())
 
   favoriteTeams     FavoriteTeam[]

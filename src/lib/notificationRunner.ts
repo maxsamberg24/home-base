@@ -51,7 +51,7 @@ export async function runNotifications(opts: { dry?: boolean; now?: Date } = {})
   const favorites = await prisma.favoriteTeam.findMany({
     where: {
       OR: [{ notifyGameStart: true }, { notifyScoreUpdates: true }, { notifyFinalScore: true }],
-      user: { phoneNumber: { not: null } },
+      user: { phoneNumber: { not: null }, phoneVerified: true },
     },
     include: { user: true },
   });

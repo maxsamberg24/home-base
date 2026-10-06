@@ -1,0 +1,5 @@
+ALTER TABLE "User" ADD COLUMN "phoneVerified" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "User" ADD COLUMN "phoneVerifyHash" TEXT;
+ALTER TABLE "User" ADD COLUMN "phoneVerifyExpires" TIMESTAMP(3);
+ALTER TABLE "User" ADD COLUMN "phoneVerifySentAt" TIMESTAMP(3);
+ALTER TABLE "User" ADD COLUMN "phoneVerifyAttempts" INTEGER NOT NULL DEFAULT 0;
