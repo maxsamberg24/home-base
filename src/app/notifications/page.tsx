@@ -66,6 +66,11 @@ export default async function NotificationsPage({
         <p className="mb-3 text-xs text-muted">
           Where updates go. We&apos;ll text you a code to confirm it&apos;s really your number.
         </p>
+        <p className="mb-3 text-xs text-muted">
+          By saving your number you agree to receive text alerts from The Locker Room about the teams
+          and alert types you choose below (about a few per game day). Message &amp; data rates may
+          apply. Reply STOP to cancel or HELP for help. We never share your number.
+        </p>
         <form action={setPhoneNumber} className="flex flex-wrap gap-2">
           <input
             name="phoneNumber"
