@@ -17,4 +17,6 @@ const handler = async () => {
 
 export default handler;
 
-export const config = { schedule: "*/5 * * * *" };
+// Schedule disabled Nov 2026: polling every 5 min kept Netlify DB awake 24/7
+// and burned credits. To re-enable, restore:
+// export const config = { schedule: "*/5 * * * *" };
